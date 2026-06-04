@@ -1,0 +1,31 @@
+# ── Proxmark3 GUI ───────────────────────────────────────────────
+
+# Upstream Proxmark3 SOURCE tree: not needed to run the GUI (the GUI drives the
+# bundled client in pm3gui/pm3client/), and it is very large.
+# >> Delete the next line if you intentionally want the full source in the repo.
+/proxmark3-master/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+
+# Bundled-client runtime output written next to the exe (logs, prefs, history,
+# temp). These must NOT be committed — but the client itself IS committed.
+pm3gui/pm3client/.proxmark3/
+pm3gui/pm3client/tmp/
+**/.proxmark3/
+
+# Logs
+*.log
+
+# Editor / tooling artifacts
+.history
+.history/
+.vscode/
+.idea/
+.claude/
+
+# OS cruft
+Thumbs.db
+.DS_Store
+desktop.ini

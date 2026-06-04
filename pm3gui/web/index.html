@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Proxmark3 GUI</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ff5c57'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='%230b0e14' font-family='monospace' font-weight='bold'%3EP3%3C/text%3E%3C/svg%3E">
+</head>
+<body class="disconnected">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">P3</span>
+      <span class="title">Proxmark3 <b>GUI</b></span>
+    </div>
+
+    <div class="conn">
+      <div class="select-wrap">
+        <select id="portSel" title="Serial port"></select>
+        <button id="refreshPorts" class="icon-btn" title="Refresh ports">&#x21bb;</button>
+      </div>
+      <button id="connectBtn" class="btn btn-primary">Connect</button>
+      <button id="settingsBtn" class="icon-btn" title="Client settings">&#9881;</button>
+      <div class="status">
+        <span id="statusDot" class="dot"></span>
+        <span id="statusText">Disconnected</span>
+        <span id="modeBadge" class="badge hidden"></span>
+      </div>
+
+      <div id="settingsPanel" class="settings-pop hidden">
+        <h3>Client settings</h3>
+        <label class="cfg-l">Client <span class="cfg-hint" id="cfgClientDetected"></span></label>
+        <select id="cfgClientSelect" class="cfg-in" style="margin-bottom:6px"></select>
+        <input id="cfgClientPath" class="cfg-in" spellcheck="false" placeholder="…or type a full path to proxmark3.exe">
+        <label class="cfg-l">Runtime folder &mdash; MinGW/Qt DLLs <span class="cfg-hint" id="cfgRuntimeDetected"></span></label>
+        <input id="cfgRuntimeDir" class="cfg-in" spellcheck="false" placeholder="e.g. D:\ProxSpace\msys2\mingw64\bin">
+        <p class="cfg-note">A ProxSpace-built <code>proxmark3.exe</code> needs its <code>mingw64\bin</code> folder
+          (Qt5Core.dll, libwinpthread-1.dll&hellip;). Set this if Connect fails with missing-DLL errors.</p>
+        <div class="cfg-actions">
+          <button id="cfgSave" class="btn btn-primary">Save</button>
+          <button id="cfgClose" class="btn">Close</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <button class="nav-item active" data-panel="dashboard"><span class="ni">&#9678;</span> Dashboard</button>
+    <button class="nav-item" data-panel="identify"><span class="ni">&#9906;</span> Identify</button>
+    <button class="nav-item" data-panel="lfclone"><span class="ni">&#128225;</span> LF Clone</button>
+    <button class="nav-item" data-panel="hfdump"><span class="ni">&#128179;</span> HF Dump</button>
+    <div class="sb-spacer"></div>
+    <div class="sb-note" id="clientNote">Locating client&hellip;</div>
+  </nav>
+
+  <main class="content">
+
+    <!-- DASHBOARD ------------------------------------------------------- -->
+    <section id="panel-dashboard" class="panel active">
+      <div class="hero">
+        <div>
+          <h1>Identify a tag</h1>
+          <p>Place a card on the antenna and run an automated LF + HF scan.</p>
+        </div>
+        <button class="btn btn-primary btn-lg cmd-btn" data-cmd="auto" data-capture="dashResult">
+          &#9889; Auto&nbsp;detect
+        </button>
+      </div>
+
+      <div id="dashResult" class="result-box hidden"></div>
+
+      <h2 class="section-title">Hardware</h2>
+      <div class="card-grid">
+        <button class="action-card cmd-btn" data-cmd="hw status">
+          <span class="ac-ic">&#128202;</span><span class="ac-t">Device status</span>
+          <span class="ac-s">hw status</span>
+        </button>
+        <button class="action-card cmd-btn" data-cmd="hw version" data-capture="dashResult">
+          <span class="ac-ic">&#8505;</span><span class="ac-t">Version</span>
+          <span class="ac-s">hw version</span>
+        </button>
+        <button class="action-card cmd-btn" data-cmd="hw tune" data-capture="dashResult">
+          <span class="ac-ic">&#128225;</span><span class="ac-t">Antenna tune</span>
+          <span class="ac-s">hw tune</span>
+        </button>
+        <button class="action-card cmd-btn" data-cmd="hw ping">
+          <span class="ac-ic">&#9889;</span><span class="ac-t">Ping</span>
+          <span class="ac-s">hw ping</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- IDENTIFY -------------------------------------------------------- -->
+    <section id="panel-identify" class="panel">
+      <h1>Identify</h1>
+      <p class="lead">Read whatever tag is on the antenna and show what it is.</p>
+      <div class="card-grid">
+        <button class="action-card cmd-btn" data-cmd="auto" data-capture="idResult">
+          <span class="ac-ic">&#9889;</span><span class="ac-t">Auto detect</span>
+          <span class="ac-s">LF + HF</span>
+        </button>
+        <button class="action-card cmd-btn" data-cmd="lf search" data-capture="idResult">
+          <span class="ac-ic">&#12297;</span><span class="ac-t">LF search</span>
+          <span class="ac-s">125 / 134 kHz</span>
+        </button>
+        <button class="action-card cmd-btn" data-cmd="hf search" data-capture="idResult">
+          <span class="ac-ic">&#12298;</span><span class="ac-t">HF search</span>
+          <span class="ac-s">13.56 MHz</span>
+        </button>
+        <button class="action-card cmd-btn" data-cmd="hf 14a info" data-capture="idResult">
+          <span class="ac-ic">&#128241;</span><span class="ac-t">NFC info</span>
+          <span class="ac-s">ISO 14443-A</span>
+        </button>
+      </div>
+      <div id="idResult" class="result-box hidden"></div>
+    </section>
+
+    <!-- LF CLONE -------------------------------------------------------- -->
+    <section id="panel-lfclone" class="panel">
+      <h1>LF Clone</h1>
+      <p class="lead">Read a 125&nbsp;kHz credential, then write it to a blank T5577.</p>
+
+      <div class="step">
+        <div class="step-h"><span class="step-n">1</span> Read source tag</div>
+        <div class="btn-row">
+          <button class="btn cmd-btn" data-cmd="lf em 410x reader" data-capture="lfResult" data-fill="em">EM410x</button>
+          <button class="btn cmd-btn" data-cmd="lf hid read" data-capture="lfResult" data-fill="hid">HID Prox</button>
+          <button class="btn cmd-btn" data-cmd="lf indala read" data-capture="lfResult">Indala</button>
+          <button class="btn cmd-btn" data-cmd="lf t55xx detect" data-capture="lfResult">T55xx detect</button>
+        </div>
+        <div id="lfResult" class="result-box hidden"></div>
+      </div>
+
+      <div class="step">
+        <div class="step-h"><span class="step-n">2</span> Write to T5577</div>
+        <div class="form-row">
+          <label>Type</label>
+          <select id="lfType">
+            <option value="em">EM410x</option>
+            <option value="hid">HID H10301 (26-bit)</option>
+          </select>
+        </div>
+        <div class="form-row" id="emFields">
+          <label>EM ID (10 hex)</label>
+          <input id="emId" placeholder="0F0368568B" maxlength="10" spellcheck="false">
+        </div>
+        <div class="form-row hidden" id="hidFields">
+          <label>Facility</label>
+          <input id="hidFc" placeholder="123" inputmode="numeric" style="max-width:90px">
+          <label>Card #</label>
+          <input id="hidCn" placeholder="4567" inputmode="numeric" style="max-width:120px">
+        </div>
+        <div class="btn-row">
+          <button id="lfWriteBtn" class="btn btn-primary">&#9998; Write to T5577</button>
+          <span class="muted">writes to a blank T5577 on the antenna</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HF DUMP --------------------------------------------------------- -->
+    <section id="panel-hfdump" class="panel">
+      <h1>HF Dump</h1>
+      <p class="lead">Recover keys and dump 13.56&nbsp;MHz cards to a file.</p>
+
+      <div class="step">
+        <div class="step-h">MIFARE Classic</div>
+        <div class="btn-row">
+          <button class="btn cmd-btn" data-cmd="hf mf info" data-capture="hfResult">Info</button>
+          <button class="btn cmd-btn" data-cmd="hf mf autopwn" data-capture="hfResult">Auto-pwn keys</button>
+          <button class="btn cmd-btn" data-cmd="hf mf dump" data-capture="hfResult">Dump</button>
+        </div>
+        <div class="hint-line">&#9888; Auto-pwn can take a while on real hardware.</div>
+      </div>
+
+      <div class="step">
+        <div class="step-h">iCLASS / Picopass</div>
+        <div class="btn-row">
+          <button class="btn cmd-btn" data-cmd="hf iclass info" data-capture="hfResult">Info</button>
+          <button class="btn cmd-btn" data-cmd="hf iclass dump" data-capture="hfResult">Dump</button>
+        </div>
+      </div>
+
+      <div id="hfResult" class="result-box hidden"></div>
+      <p class="muted">Dump files are saved in the client's working directory (.bin / .json / .eml).</p>
+    </section>
+  </main>
+
+  <!-- CONSOLE ----------------------------------------------------------- -->
+  <section class="console">
+    <div class="console-head">
+      <span class="ch-title">&#9632; Console</span>
+      <div class="ch-tools">
+        <span id="busyDot" class="busy hidden">working&hellip;</span>
+        <label class="chk"><input type="checkbox" id="autoscroll" checked> autoscroll</label>
+        <button id="clearConsole" class="mini-btn">Clear</button>
+      </div>
+    </div>
+    <div class="console-body" id="consoleBody"></div>
+    <form class="console-input" id="cmdForm" autocomplete="off">
+      <span class="cprompt">pm3 &raquo;</span>
+      <input id="cmdInput" placeholder="type a Proxmark3 command and press Enter (e.g. hw status)" spellcheck="false" disabled>
+      <button class="btn" id="runBtn" disabled>Run</button>
+    </form>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

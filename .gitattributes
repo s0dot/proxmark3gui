@@ -1,0 +1,12 @@
+# Normalize line endings for text; treat binaries (and the whole bundled
+# Windows client) as binary so Git never rewrites them.
+* text=auto
+
+*.dll binary
+*.exe binary
+*.elf binary
+*.bin binary
+*.png binary
+
+# The vendored Windows client is all binary/vendored — don't touch it.
+pm3gui/pm3client/** binary
