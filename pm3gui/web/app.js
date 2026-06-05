@@ -27,6 +27,7 @@ window.addEventListener("DOMContentLoaded", () => {
   wireActions();
   wireLfForm();
   wireSettings();
+  wireLaunchers();
   loadPorts();
   syncStatus(); // resume if the server already has a live session (e.g. after refresh)
 });
@@ -68,6 +69,16 @@ async function loadPorts() {
   }
   state.clientFound = data.client_found;
   state.isWindows = data.is_windows;
+
+  // Chameleon Ultra companion-app launch button
+  state.chameleonAvailable = data.chameleon_available;
+  const cbtn = $("#launchChameleon");
+  if (cbtn) {
+    cbtn.disabled = !data.chameleon_available;
+    cbtn.title = data.chameleon_available
+      ? "Open: " + data.chameleon_path
+      : "Chameleon Ultra GUI not found (add a chameleon/ folder with chameleonultragui.exe)";
+  }
   // surface what the server auto-detected inside the settings popover
   $("#cfgClientDetected").textContent = data.client_path
     ? "✓ " + shortenPath(data.client_path)
@@ -126,6 +137,31 @@ function wireConnect() {
   $("#refreshPorts").addEventListener("click", loadPorts);
   $("#connectBtn").addEventListener("click", () => {
     state.connected ? disconnect() : connect();
+  });
+}
+
+function wireLaunchers() {
+  const btn = $("#launchChameleon");
+  btn.addEventListener("click", async () => {
+    if (btn.disabled) return;
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ni">&#129422;</span> Opening…';
+    try {
+      const r = await postJSON("/api/launch/chameleon", {});
+      if (r.error) throw new Error(r.error);
+      appendConsole(
+        "[+] Chameleon Ultra GUI " + (r.result === "already running" ? "is already open" : "launched"),
+        "sys"
+      );
+    } catch (e) {
+      appendConsole("[!] Could not open Chameleon GUI: " + e.message, "sys");
+    } finally {
+      setTimeout(() => {
+        btn.innerHTML = orig;
+        btn.disabled = !state.chameleonAvailable;
+      }, 900);
+    }
   });
 }
 

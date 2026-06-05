@@ -109,6 +109,48 @@ def discover_clients():
 
 
 # --------------------------------------------------------------------------- #
+# External companion apps (e.g. the Chameleon Ultra GUI)
+# --------------------------------------------------------------------------- #
+_ext_procs = {}
+
+
+def find_chameleon_gui():
+    """Locate the bundled Chameleon Ultra GUI executable, or None."""
+    names = ["chameleonultragui.exe"] if sys.platform.startswith("win") else ["chameleonultragui"]
+    here = os.path.dirname(os.path.abspath(__file__))
+    workdir = os.path.dirname(here)  # project root
+    roots = [os.path.join(workdir, "chameleon"),
+             os.path.join(here, "chameleon"),
+             workdir]
+    for root in roots:
+        for n in names:
+            cand = os.path.join(root, n)
+            if os.path.isfile(cand):
+                return cand
+    return None
+
+
+def launch_external(name, exe):
+    """Launch a detached external GUI app. Returns 'launched' or 'already running'."""
+    p = _ext_procs.get(name)
+    if p is not None and p.poll() is None:
+        return "already running"
+    flags = 0
+    if sys.platform.startswith("win"):
+        flags = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    proc = subprocess.Popen(
+        [exe],
+        cwd=os.path.dirname(exe) or None,
+        creationflags=flags,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    _ext_procs[name] = proc
+    return "launched"
+
+
+# --------------------------------------------------------------------------- #
 # Locating the MinGW / Qt runtime DLLs (ProxSpace builds)
 #
 # A ProxSpace-built proxmark3.exe depends on DLLs such as libwinpthread-1.dll,

@@ -262,6 +262,13 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/command":
                 s = STATE.dispatch(body.get("cmd", ""))
                 return self._json({"ok": True, "cmd_seq": s, "status": STATE.snapshot()})
+            if u.path == "/api/launch/chameleon":
+                exe = pm3.find_chameleon_gui()
+                if not exe:
+                    return self._json({"error": "Chameleon Ultra GUI not found "
+                                                "(expected chameleon/chameleonultragui.exe)"}, 404)
+                result = pm3.launch_external("chameleon", exe)
+                return self._json({"ok": True, "result": result, "path": exe})
             return self._json({"error": "unknown endpoint"}, 404)
         except RuntimeError as e:
             return self._json({"error": str(e)}, 409)
@@ -272,6 +279,7 @@ class Handler(BaseHTTPRequestHandler):
     def _ports_payload(self):
         found = pm3.find_client()
         rt = pm3.find_runtime_dir(found) if found else None
+        cham = pm3.find_chameleon_gui()
         return {
             "ports": ports_mod.list_ports(),
             "client_found": found is not None,
@@ -279,6 +287,8 @@ class Handler(BaseHTTPRequestHandler):
             "clients": pm3.discover_clients(),
             "runtime_dir": rt,
             "is_windows": sys.platform.startswith("win"),
+            "chameleon_available": cham is not None,
+            "chameleon_path": cham,
         }
 
     def _handle_output(self, qs):
