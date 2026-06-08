@@ -26,6 +26,7 @@ window.addEventListener("DOMContentLoaded", () => {
   wireConnect();
   wireActions();
   wireLfForm();
+  wireWriteForms();
   wireSettings();
   wireLaunchers();
   loadPorts();
@@ -552,6 +553,76 @@ function toggleLfFields() {
   const t = $("#lfType").value;
   $("#emFields").classList.toggle("hidden", t !== "em");
   $("#hidFields").classList.toggle("hidden", t !== "hid");
+}
+
+/* ------------------------------------------------------------------ *
+ *  Write forms (LF raw T5577 + HF MIFARE / magic / Ultralight)
+ * ------------------------------------------------------------------ */
+const hexN = (s, n) => new RegExp(`^[0-9A-Fa-f]{${n}}$`).test((s || "").trim());
+const isInt = (s) => /^\d+$/.test((s || "").trim());
+function warn(msg) {
+  appendConsole("[!] " + msg, "sys");
+  return false;
+}
+
+function wireWriteForms() {
+  // ---- LF: raw T5577 block write ----------------------------------- //
+  $("#t5WriteBtn").addEventListener("click", () => {
+    const blk = $("#t5Block").value;
+    const data = $("#t5Data").value.trim();
+    const pwd = $("#t5Pwd").value.trim();
+    if (!hexN(data, 8)) return warn("T5577 data must be 8 hex chars (4 bytes)");
+    if (pwd && !hexN(pwd, 8)) return warn("T5577 password must be 8 hex chars");
+    if (blk === "0" && !confirm("Block 0 sets the T5577 config/modulation. A wrong value can make the tag unreadable.\n\nWrite block 0?")) return;
+    let cmd = `lf t55xx write -b ${blk} -d ${data.toUpperCase()}`;
+    if (pwd) cmd += ` -p ${pwd.toUpperCase()}`;
+    if ($("#t5Verify").checked) cmd += " --verify";
+    runCmd(cmd, { capture: "lfResult" });
+  });
+
+  // ---- HF: MIFARE Classic block write ------------------------------ //
+  $("#mfWriteBtn").addEventListener("click", () => {
+    const blk = $("#mfwBlk").value.trim();
+    const key = $("#mfwKey").value.trim();
+    const data = $("#mfwData").value.trim();
+    if (!isInt(blk)) return warn("Block must be a number");
+    if (!hexN(key, 12)) return warn("Key must be 12 hex chars (6 bytes)");
+    if (!hexN(data, 32)) return warn("Data must be 32 hex chars (16 bytes)");
+    if (blk === "0" && !confirm("Block 0 is the manufacturer block (UID/BCC/SAK/ATQA). Bad data can brick a Magic Gen2 card.\n\nWrite block 0?")) return;
+    const kt = $("#mfwKeyType").value === "b" ? "-b" : "-a";
+    let cmd = `hf mf wrbl --blk ${blk} ${kt} -k ${key.toUpperCase()} -d ${data.toUpperCase()}`;
+    if ($("#mfwForce").checked) cmd += " --force";
+    runCmd(cmd, { capture: "hfwResult" });
+  });
+
+  // ---- HF: magic Gen1a set UID ------------------------------------- //
+  $("#magUidBtn").addEventListener("click", () => {
+    const uid = $("#magUid").value.trim();
+    const atqa = $("#magAtqa").value.trim();
+    const sak = $("#magSak").value.trim();
+    if (!hexN(uid, 8) && !hexN(uid, 14)) return warn("UID must be 8 or 14 hex chars (4 or 7 bytes)");
+    if (atqa && !hexN(atqa, 4)) return warn("ATQA must be 4 hex chars");
+    if (sak && !hexN(sak, 2)) return warn("SAK must be 2 hex chars");
+    if (!confirm(`Set magic-card UID to ${uid.toUpperCase()}? (magic Gen1a cards only)`)) return;
+    let cmd = `hf mf csetuid -u ${uid.toUpperCase()}`;
+    if (atqa) cmd += ` -a ${atqa.toUpperCase()}`;
+    if (sak) cmd += ` -s ${sak.toUpperCase()}`;
+    runCmd(cmd, { capture: "hfwResult" });
+  });
+
+  // ---- HF: Ultralight / NTAG write page ---------------------------- //
+  $("#muWriteBtn").addEventListener("click", () => {
+    const page = $("#muPage").value.trim();
+    const data = $("#muData").value.trim();
+    const key = $("#muKey").value.trim();
+    if (!isInt(page)) return warn("Page must be a number");
+    if (!hexN(data, 8)) return warn("Data must be 8 hex chars (4 bytes)");
+    if (key && !hexN(key, 8) && !hexN(key, 32)) return warn("Key must be 8 or 32 hex chars");
+    if (parseInt(page, 10) <= 3 && !confirm(`Pages 0-2 are UID/lock bytes; page 3 is OTP (one-time, irreversible).\n\nWrite page ${page}?`)) return;
+    let cmd = `hf mfu wrbl -b ${page} -d ${data.toUpperCase()}`;
+    if (key) cmd += ` -k ${key.toUpperCase()}`;
+    runCmd(cmd, { capture: "hfwResult" });
+  });
 }
 
 /* ------------------------------------------------------------------ *

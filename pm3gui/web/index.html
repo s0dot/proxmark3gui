@@ -48,8 +48,9 @@
   <nav class="sidebar">
     <button class="nav-item active" data-panel="dashboard"><span class="ni">&#9678;</span> Dashboard</button>
     <button class="nav-item" data-panel="identify"><span class="ni">&#9906;</span> Identify</button>
-    <button class="nav-item" data-panel="lfclone"><span class="ni">&#128225;</span> LF Clone</button>
+    <button class="nav-item" data-panel="lfclone"><span class="ni">&#128225;</span> LF Write</button>
     <button class="nav-item" data-panel="hfdump"><span class="ni">&#128179;</span> HF Dump</button>
+    <button class="nav-item" data-panel="hfwrite"><span class="ni">&#9999;</span> HF Write</button>
     <div class="sb-spacer"></div>
     <div class="sb-section">Companion app</div>
     <button class="launch-btn" id="launchChameleon" title="Open the Chameleon Ultra GUI">
@@ -120,10 +121,10 @@
       <div id="idResult" class="result-box hidden"></div>
     </section>
 
-    <!-- LF CLONE -------------------------------------------------------- -->
+    <!-- LF WRITE -------------------------------------------------------- -->
     <section id="panel-lfclone" class="panel">
-      <h1>LF Clone</h1>
-      <p class="lead">Read a 125&nbsp;kHz credential, then write it to a blank T5577.</p>
+      <h1>LF Write</h1>
+      <p class="lead">Clone a 125&nbsp;kHz credential to a blank T5577, or write raw T5577 blocks.</p>
 
       <div class="step">
         <div class="step-h"><span class="step-n">1</span> Read source tag</div>
@@ -160,6 +161,28 @@
           <span class="muted">writes to a blank T5577 on the antenna</span>
         </div>
       </div>
+
+      <div class="step">
+        <div class="step-h"><span class="step-n">3</span> Write raw T5577 block
+          <span class="muted" style="font-weight:400">— advanced</span></div>
+        <div class="form-row">
+          <label>Block</label>
+          <select id="t5Block" style="max-width:80px">
+            <option>0</option><option selected>1</option><option>2</option><option>3</option>
+            <option>4</option><option>5</option><option>6</option><option>7</option>
+          </select>
+          <label>Data (4 bytes)</label>
+          <input id="t5Data" placeholder="00148040" maxlength="8" spellcheck="false" style="max-width:130px">
+          <label>Password</label>
+          <input id="t5Pwd" placeholder="(optional)" maxlength="8" spellcheck="false" style="max-width:120px">
+        </div>
+        <div class="btn-row">
+          <button id="t5WriteBtn" class="btn btn-primary">&#9998; Write block</button>
+          <label class="chk"><input type="checkbox" id="t5Verify" checked> verify</label>
+          <span class="muted">lf t55xx write</span>
+        </div>
+        <div class="hint-line">&#9888; Block 0 holds the chip config/modulation — a wrong value can make the tag unreadable.</div>
+      </div>
     </section>
 
     <!-- HF DUMP --------------------------------------------------------- -->
@@ -187,6 +210,67 @@
 
       <div id="hfResult" class="result-box hidden"></div>
       <p class="muted">Dump files are saved in the client's working directory (.bin / .json / .eml).</p>
+    </section>
+
+    <!-- HF WRITE -------------------------------------------------------- -->
+    <section id="panel-hfwrite" class="panel">
+      <h1>HF Write</h1>
+      <p class="lead">Write blocks to 13.56&nbsp;MHz cards. Identify the card first so you know its type.</p>
+
+      <div class="step">
+        <div class="step-h">MIFARE Classic — write block</div>
+        <div class="form-row">
+          <label>Block</label>
+          <input id="mfwBlk" placeholder="1" inputmode="numeric" maxlength="3" style="max-width:70px">
+          <label>Key</label>
+          <select id="mfwKeyType" style="max-width:64px"><option value="a">A</option><option value="b">B</option></select>
+          <input id="mfwKey" placeholder="FFFFFFFFFFFF" maxlength="12" spellcheck="false" style="max-width:160px">
+        </div>
+        <div class="form-row">
+          <label>Data (16 bytes)</label>
+          <input id="mfwData" placeholder="000102030405060708090A0B0C0D0E0F" maxlength="32" spellcheck="false" style="max-width:340px">
+        </div>
+        <div class="btn-row">
+          <button id="mfWriteBtn" class="btn btn-primary">&#9998; Write block</button>
+          <label class="chk"><input type="checkbox" id="mfwForce"> force (bad ACL / block 0)</label>
+          <span class="muted">hf mf wrbl</span>
+        </div>
+        <div class="hint-line">&#9888; Writing block 0 with invalid data can brick a Magic Gen2 card.</div>
+      </div>
+
+      <div class="step">
+        <div class="step-h">Magic card (Gen1a) — set UID</div>
+        <div class="form-row">
+          <label>UID (4/7 bytes)</label>
+          <input id="magUid" placeholder="DEADBEEF" maxlength="14" spellcheck="false" style="max-width:170px">
+          <label>ATQA</label>
+          <input id="magAtqa" placeholder="opt 0004" maxlength="4" spellcheck="false" style="max-width:110px">
+          <label>SAK</label>
+          <input id="magSak" placeholder="opt 08" maxlength="2" spellcheck="false" style="max-width:90px">
+        </div>
+        <div class="btn-row">
+          <button id="magUidBtn" class="btn btn-primary">&#9998; Set UID</button>
+          <span class="muted">hf mf csetuid — magic Gen1a only</span>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-h">Ultralight / NTAG — write page</div>
+        <div class="form-row">
+          <label>Page</label>
+          <input id="muPage" placeholder="4" inputmode="numeric" maxlength="3" style="max-width:70px">
+          <label>Data (4 bytes)</label>
+          <input id="muData" placeholder="01234567" maxlength="8" spellcheck="false" style="max-width:130px">
+          <label>Key</label>
+          <input id="muKey" placeholder="(optional)" maxlength="32" spellcheck="false" style="max-width:160px">
+        </div>
+        <div class="btn-row">
+          <button id="muWriteBtn" class="btn btn-primary">&#9998; Write page</button>
+          <span class="muted">hf mfu wrbl</span>
+        </div>
+      </div>
+
+      <div id="hfwResult" class="result-box hidden"></div>
     </section>
   </main>
 

@@ -206,4 +206,9 @@ body.connecting .dot{background:var(--yellow);box-shadow:0 0 10px var(--yellow);
 ::-webkit-scrollbar-track{background:transparent}
 
 /* disabled-until-connected affordance */
-body.disconnected .cmd-btn,body.disconnected #lfWriteBtn{opacity:.5;pointer-events:none}
+body.disconnected .cmd-btn,
+body.disconnected #lfWriteBtn,
+body.disconnected #t5WriteBtn,
+body.disconnected #mfWriteBtn,
+body.disconnected #magUidBtn,
+body.disconnected #muWriteBtn{opacity:.5;pointer-events:none}

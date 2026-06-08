@@ -653,6 +653,32 @@ def _hf_iclass_dump(self, raw):
     ]
 
 
+# ---- write commands (demo) ---------------------------------------------- #
+def _lf_t55_write(self, raw):
+    return [
+        "[=] Writing page 0  block ...",
+        "[+] \x1b[32mDone!\x1b[0m",
+        "[?] Hint: try `lf t55xx detect` / `lf search` to verify",
+    ]
+
+
+def _hf_mf_wrbl(self, raw):
+    return ["[=] Writing block...", "[+] Write block ( \x1b[32mok\x1b[0m )"]
+
+
+def _hf_csetuid(self, raw):
+    return [
+        "[=] Old UID... 11 22 33 44",
+        "[=] New UID... DE AD BE EF",
+        "[+] Write ( \x1b[32mok\x1b[0m )",
+        "[+] \x1b[32mDone!\x1b[0m",
+    ]
+
+
+def _hf_mfu_wrbl(self, raw):
+    return ["[=] Writing page...", "[+] Write block ( \x1b[32mok\x1b[0m )"]
+
+
 def _auto(self, raw):
     return (
         ["[=] lf search", ""]
@@ -695,6 +721,7 @@ _DISPATCH = [
     ("lf hid clone", _lf_clone),
     ("lf indala clone", _lf_clone),
     ("lf t55xx detect", _lf_t55_detect),
+    ("lf t55xx write", _lf_t55_write),
     ("lf t55xx wipe", lambda s, r: ["[=] Wiping T55x7 tag...", "[+] \x1b[32mDone!\x1b[0m"]),
     ("hf search", _hf_search),
     ("hf 14a info", _hf_14a_info),
@@ -702,6 +729,9 @@ _DISPATCH = [
     ("hf mf info", _hf_mf_info),
     ("hf mf autopwn", _hf_mf_autopwn),
     ("hf mf dump", _hf_mf_dump),
+    ("hf mf wrbl", _hf_mf_wrbl),
+    ("hf mf csetuid", _hf_csetuid),
     ("hf iclass info", _hf_iclass_info),
     ("hf iclass dump", _hf_iclass_dump),
+    ("hf mfu wrbl", _hf_mfu_wrbl),
 ]
