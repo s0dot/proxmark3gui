@@ -417,12 +417,13 @@ async function runCmd(cmd, opts = {}) {
   try {
     const r = await postJSON("/api/command", { cmd });
     if (r.error) throw new Error(r.error);
-    if (opts.capture) {
+    if (opts.capture || opts.onDone) {
       state.capture = {
         cmdSeq: r.cmd_seq,
         lines: [],
         targetId: opts.capture,
         fill: opts.fill,
+        onDone: opts.onDone,
       };
     }
     if (r.status) applyStatus(r.status);
@@ -444,9 +445,20 @@ function wireActions() {
  *  Result extraction (guided-workflow flavour)
  * ------------------------------------------------------------------ */
 function finishCapture(cap) {
+  const clean = cap.lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
+  if (cap.targetId) renderFacts(cap, clean);
+  if (cap.onDone) {
+    try {
+      cap.onDone(clean);
+    } catch (e) {
+      appendConsole("[!] verify error: " + e.message, "sys");
+    }
+  }
+}
+
+function renderFacts(cap, clean) {
   const target = document.getElementById(cap.targetId);
   if (!target) return;
-  const clean = cap.lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
   const found = extractFacts(clean);
 
   if (cap.fill === "em") {
@@ -528,14 +540,16 @@ function wireLfForm() {
   $("#lfType").addEventListener("change", toggleLfFields);
   $("#lfWriteBtn").addEventListener("click", () => {
     const type = $("#lfType").value;
-    let cmd;
+    let spec;
     if (type === "em") {
       const id = $("#emId").value.trim();
       if (!/^[0-9A-Fa-f]{10}$/.test(id)) {
         appendConsole("[!] EM ID must be 10 hex characters", "sys");
         return;
       }
-      cmd = `lf em 410x clone --id ${id.toUpperCase()}`;
+      const ID = id.toUpperCase();
+      spec = { writeCmd: `lf em 410x clone --id ${ID}`, readCmd: "lf em 410x reader",
+               expect: ID, kind: "hex", targetId: "lfResult", label: `EM410x ID ${ID}` };
     } else {
       const fc = $("#hidFc").value.trim(),
         cn = $("#hidCn").value.trim();
@@ -543,9 +557,10 @@ function wireLfForm() {
         appendConsole("[!] HID needs Facility and Card #", "sys");
         return;
       }
-      cmd = `lf hid clone -w H10301 --fc ${fc} --cn ${cn}`;
+      spec = { writeCmd: `lf hid clone -w H10301 --fc ${fc} --cn ${cn}`, readCmd: "lf hid read",
+               expect: `FC ${fc} CN ${cn}`, kind: "hidfccn", targetId: "lfResult", label: `HID FC ${fc} CN ${cn}` };
     }
-    runCmd(cmd, { capture: "lfResult" });
+    writeVerify(spec);
   });
   toggleLfFields();
 }
@@ -577,7 +592,9 @@ function wireWriteForms() {
     let cmd = `lf t55xx write -b ${blk} -d ${data.toUpperCase()}`;
     if (pwd) cmd += ` -p ${pwd.toUpperCase()}`;
     if ($("#t5Verify").checked) cmd += " --verify";
-    runCmd(cmd, { capture: "lfResult" });
+    const readCmd = `lf t55xx read -b ${blk}` + (pwd ? ` -p ${pwd.toUpperCase()}` : "");
+    writeVerify({ writeCmd: cmd, readCmd, expect: data.toUpperCase(), kind: "hex",
+                  targetId: "lfResult", label: `T5577 block ${blk}` });
   });
 
   // ---- HF: MIFARE Classic block write ------------------------------ //
@@ -592,7 +609,9 @@ function wireWriteForms() {
     const kt = $("#mfwKeyType").value === "b" ? "-b" : "-a";
     let cmd = `hf mf wrbl --blk ${blk} ${kt} -k ${key.toUpperCase()} -d ${data.toUpperCase()}`;
     if ($("#mfwForce").checked) cmd += " --force";
-    runCmd(cmd, { capture: "hfwResult" });
+    const readCmd = `hf mf rdbl --blk ${blk} ${kt} -k ${key.toUpperCase()}`;
+    writeVerify({ writeCmd: cmd, readCmd, expect: data.toUpperCase(), kind: "hex",
+                  targetId: "hfwResult", label: `MIFARE block ${blk}` });
   });
 
   // ---- HF: magic Gen1a set UID ------------------------------------- //
@@ -607,7 +626,8 @@ function wireWriteForms() {
     let cmd = `hf mf csetuid -u ${uid.toUpperCase()}`;
     if (atqa) cmd += ` -a ${atqa.toUpperCase()}`;
     if (sak) cmd += ` -s ${sak.toUpperCase()}`;
-    runCmd(cmd, { capture: "hfwResult" });
+    writeVerify({ writeCmd: cmd, readCmd: "hf 14a info", expect: uid.toUpperCase(), kind: "hex",
+                  targetId: "hfwResult", label: `UID ${uid.toUpperCase()}` });
   });
 
   // ---- HF: Ultralight / NTAG write page ---------------------------- //
@@ -621,8 +641,84 @@ function wireWriteForms() {
     if (parseInt(page, 10) <= 3 && !confirm(`Pages 0-2 are UID/lock bytes; page 3 is OTP (one-time, irreversible).\n\nWrite page ${page}?`)) return;
     let cmd = `hf mfu wrbl -b ${page} -d ${data.toUpperCase()}`;
     if (key) cmd += ` -k ${key.toUpperCase()}`;
-    runCmd(cmd, { capture: "hfwResult" });
+    const readCmd = `hf mfu rdbl -b ${page}` + (key ? ` -k ${key.toUpperCase()}` : "");
+    writeVerify({ writeCmd: cmd, readCmd, expect: data.toUpperCase(), kind: "hex",
+                  targetId: "hfwResult", label: `Ultralight page ${page}` });
   });
+}
+
+/* ------------------------------------------------------------------ *
+ *  Write → read-back → compare verification
+ * ------------------------------------------------------------------ */
+const READ_FAIL = /no (tag|card|answer|known)|couldn'?t read|can'?t read|cannot read|auth\w*\s*(failed|error)|read error|tag removed|timeout|0\s*\/\s*\d+\s*blocks|operation failed|failed to/i;
+
+function normHex(s) {
+  return (s || "").replace(/[^0-9a-fA-F]/g, "").toUpperCase();
+}
+
+function writeVerify(spec) {
+  runCmd(spec.writeCmd, {
+    capture: spec.targetId,
+    onDone: () => {
+      appendConsole("[=] Verifying — reading the tag back to compare…", "sys");
+      runCmd(spec.readCmd, {
+        onDone: (readLines) => {
+          const v = compareReadback(readLines, spec.expect, spec.kind);
+          renderVerify(spec.targetId, { label: spec.label, expect: spec.expect, ...v });
+        },
+      });
+    },
+  });
+}
+
+function compareReadback(lines, expect, kind) {
+  const text = lines.join("\n");
+  if (kind === "hidfccn") {
+    const m = text.match(/FC:?\s*(\d+)[^]*?CN:?\s*(\d+)/i);
+    if (!m) return { status: READ_FAIL.test(text) ? "unverified" : "mismatch", got: "(not read)" };
+    const got = `FC ${m[1]} CN ${m[2]}`;
+    return { status: got === expect ? "ok" : "mismatch", got };
+  }
+  // hex-based: did the value we wrote show up when reading back?
+  const want = normHex(expect);
+  if (want && normHex(text).includes(want)) return { status: "ok", got: expect };
+  const got = extractReadValue(lines, kind);
+  if (!got || READ_FAIL.test(text)) return { status: "unverified", got: got || "(couldn't read the tag)" };
+  return { status: "mismatch", got };
+}
+
+function extractReadValue(lines) {
+  const text = lines.join("\n");
+  let m;
+  if ((m = text.match(/EM\s*410x\s*ID\s*([0-9A-Fa-f]+)/i))) return m[1].toUpperCase();
+  if ((m = text.match(/\bUID:\s*([0-9A-Fa-f ]{6,})/i))) return m[1].trim().toUpperCase();
+  if ((m = text.match(/\|\s*([0-9A-Fa-f][0-9A-Fa-f ]{6,46}[0-9A-Fa-f])\s*\|/))) return m[1].replace(/\s+/g, " ").toUpperCase();
+  if ((m = text.match(/\b\d{1,2}\s*\|\s*([0-9A-Fa-f]{8})\b/))) return m[1].toUpperCase();
+  return null;
+}
+
+function renderVerify(targetId, v) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.classList.remove("hidden");
+  const map = {
+    ok: { cls: "vr-ok", icon: "&#10004;", head: "Write verified" },
+    mismatch: { cls: "vr-bad", icon: "&#10008;", head: "Verify FAILED — mismatch" },
+    unverified: { cls: "vr-warn", icon: "&#9888;", head: "Couldn't read back to verify" },
+  };
+  const m = map[v.status] || map.unverified;
+  appendConsole(
+    (v.status === "ok" ? "[+] " : v.status === "mismatch" ? "[!] " : "[?] ") + m.head + " — " + v.label,
+    "sys"
+  );
+  el.innerHTML =
+    `<h4>Verify — ${esc(v.label)}</h4>` +
+    `<div class="verify ${m.cls}"><span class="vr-icon">${m.icon}</span>` +
+    `<div class="vr-body"><div class="vr-head">${m.head}</div>` +
+    `<div class="vr-cmp"><span class="vr-k">wrote</span><code>${esc(v.expect)}</code></div>` +
+    `<div class="vr-cmp"><span class="vr-k">read back</span><code>${esc(v.got)}</code></div>` +
+    `</div></div>`;
+  el.scrollIntoView({ block: "nearest" });
 }
 
 /* ------------------------------------------------------------------ *

@@ -536,11 +536,28 @@ def _hf_search(self, raw):
     ]
 
 
+def _arg(raw, *names):
+    """Return the value following any of the given flags in a command string."""
+    toks = raw.split()
+    for i, t in enumerate(toks):
+        if t in names and i + 1 < len(toks):
+            return toks[i + 1]
+    return None
+
+
+def _i(v, default=0):
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return default
+
+
 def _hf_14a_info(self, raw):
-    self.state["hf_uid"] = "04 7A 8C B2 19 50 80"
+    uid = self.state.get("hf_uid") or "04 7A 8C B2 19 50 80"
+    self.state["hf_uid"] = uid
     return [
         "[=] --- ISO14443-A Information ---------------------",
-        "[+]  UID: 04 7A 8C B2 19 50 80",
+        f"[+]  UID: {uid}",
         "[+] ATQA: 00 44",
         "[+]  SAK: 00 [2]",
         "[=]  MANUFACTURER: NXP Semiconductors Germany",
@@ -552,20 +569,23 @@ def _hf_14a_info(self, raw):
 
 
 def _lf_em_reader(self, raw):
-    self.state["lf_id"] = "0F0368568B"
+    idv = self.state.get("lf_id") or "0F0368568B"
+    self.state["lf_id"] = idv
     self.state["lf_type"] = "EM410x"
     return [
-        "[+] EM 410x ID 0F0368568B",
+        f"[+] EM 410x ID {idv}",
         "[+] EM410x ( RF/64 )",
         "[=]  DEZ 10.......... 0057153675",
     ]
 
 
 def _lf_hid_read(self, raw):
+    fc = self.state.get("hid_fc") or "123"
+    cn = self.state.get("hid_cn") or "4567"
     return [
         "[+] \x1b[32mHID\x1b[0m H10301 26-bit",
         "[+]  bin: 1010000010..",
-        "[+]  FC: 123  CN: 4567",
+        f"[+]  FC: {fc}  CN: {cn}",
         "[+]  Raw: 2004263f88",
     ]
 
@@ -585,6 +605,18 @@ def _lf_t55_detect(self, raw):
 
 
 def _lf_clone(self, raw):
+    low = raw.lower()
+    if "em 410x" in low or "em 4x" in low:
+        v = _arg(raw, "--id")
+        if v:
+            self.state["lf_id"] = v.upper()
+    elif "hid" in low:
+        fc = _arg(raw, "--fc")
+        cn = _arg(raw, "--cn")
+        if fc:
+            self.state["hid_fc"] = fc
+        if cn:
+            self.state["hid_cn"] = cn
     return [
         "[=] Preparing to clone to T55x7 tag...",
         "[=] Writing block 0...",
@@ -653,30 +685,70 @@ def _hf_iclass_dump(self, raw):
     ]
 
 
-# ---- write commands (demo) ---------------------------------------------- #
+# ---- write + read-back commands (demo, stateful so verify can pass) ------ #
 def _lf_t55_write(self, raw):
+    blk = _arg(raw, "-b", "--blk") or "1"
+    data = (_arg(raw, "-d", "--data") or "00148040").upper()
+    self.state["t55"] = (blk, data)
+    return [f"[=] Writing page 0  block {blk}  data {data} ...", "[+] \x1b[32mDone!\x1b[0m"]
+
+
+def _lf_t55_read(self, raw):
+    blk = _arg(raw, "-b", "--blk") or "1"
+    saved = self.state.get("t55")
+    data = saved[1] if saved else "00148040"
     return [
-        "[=] Writing page 0  block ...",
-        "[+] \x1b[32mDone!\x1b[0m",
-        "[?] Hint: try `lf t55xx detect` / `lf search` to verify",
+        "[=] Reading Page 0:",
+        "[=] blk | data     | binary                           | ascii",
+        "[=] ----+----------+----------------------------------+------",
+        f"[+]  {_i(blk):02d} | {data} |                                  | ....",
     ]
 
 
 def _hf_mf_wrbl(self, raw):
+    blk = _arg(raw, "--blk") or "1"
+    data = (_arg(raw, "-d", "--data") or "00010203040506070809101112131415").upper()
+    self.state["mf"] = (blk, data)
     return ["[=] Writing block...", "[+] Write block ( \x1b[32mok\x1b[0m )"]
 
 
+def _hf_mf_rdbl(self, raw):
+    blk = _arg(raw, "--blk") or "1"
+    saved = self.state.get("mf")
+    data = saved[1] if saved else "00010203040506070809101112131415"
+    pairs = " ".join(data[i:i + 2] for i in range(0, min(len(data), 32), 2))
+    return [
+        "[=]  # | data                                            | ascii",
+        "[=] ---+-------------------------------------------------+-----",
+        f"[=]  {_i(blk):2d} | {pairs} | ................",
+    ]
+
+
 def _hf_csetuid(self, raw):
+    uid = (_arg(raw, "-u", "--uid") or "DEADBEEF").upper()
+    spaced = " ".join(uid[i:i + 2] for i in range(0, len(uid), 2))
+    self.state["hf_uid"] = spaced
     return [
         "[=] Old UID... 11 22 33 44",
-        "[=] New UID... DE AD BE EF",
+        f"[=] New UID... {spaced}",
         "[+] Write ( \x1b[32mok\x1b[0m )",
         "[+] \x1b[32mDone!\x1b[0m",
     ]
 
 
 def _hf_mfu_wrbl(self, raw):
+    blk = _arg(raw, "-b", "--block") or "4"
+    data = (_arg(raw, "-d", "--data") or "01234567").upper()
+    self.state["mfu"] = (blk, data)
     return ["[=] Writing page...", "[+] Write block ( \x1b[32mok\x1b[0m )"]
+
+
+def _hf_mfu_rdbl(self, raw):
+    blk = _arg(raw, "-b", "--block") or "4"
+    saved = self.state.get("mfu")
+    data = saved[1] if saved else "01234567"
+    pairs = " ".join(data[i:i + 2] for i in range(0, min(len(data), 8), 2))
+    return [f"[=]  {_i(blk):02d}/0x{_i(blk):02X} | {pairs} | ...."]
 
 
 def _auto(self, raw):
@@ -722,6 +794,7 @@ _DISPATCH = [
     ("lf indala clone", _lf_clone),
     ("lf t55xx detect", _lf_t55_detect),
     ("lf t55xx write", _lf_t55_write),
+    ("lf t55xx read", _lf_t55_read),
     ("lf t55xx wipe", lambda s, r: ["[=] Wiping T55x7 tag...", "[+] \x1b[32mDone!\x1b[0m"]),
     ("hf search", _hf_search),
     ("hf 14a info", _hf_14a_info),
@@ -730,8 +803,10 @@ _DISPATCH = [
     ("hf mf autopwn", _hf_mf_autopwn),
     ("hf mf dump", _hf_mf_dump),
     ("hf mf wrbl", _hf_mf_wrbl),
+    ("hf mf rdbl", _hf_mf_rdbl),
     ("hf mf csetuid", _hf_csetuid),
     ("hf iclass info", _hf_iclass_info),
     ("hf iclass dump", _hf_iclass_dump),
     ("hf mfu wrbl", _hf_mfu_wrbl),
+    ("hf mfu rdbl", _hf_mfu_rdbl),
 ]

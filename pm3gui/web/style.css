@@ -161,6 +161,20 @@ body.connecting .dot{background:var(--yellow);box-shadow:0 0 10px var(--yellow);
 .chip.ok .v{color:var(--green)}
 .result-empty{color:var(--dim);font-style:italic}
 
+/* write-verify verdict */
+.verify{display:flex;gap:13px;align-items:flex-start;padding:12px 14px;border-radius:9px;margin-top:2px}
+.vr-icon{font-size:22px;line-height:1}
+.vr-head{font-weight:700;margin-bottom:7px;font-size:13.5px}
+.vr-cmp{display:flex;gap:9px;align-items:baseline;margin:3px 0}
+.vr-k{color:var(--faint);min-width:64px;text-transform:uppercase;font-size:10px;letter-spacing:.6px}
+.vr-cmp code{font-family:var(--mono);color:var(--text);background:var(--bg);padding:2px 8px;border-radius:5px;font-size:12px;word-break:break-all}
+.vr-ok{background:rgba(84,201,138,.10);border:1px solid rgba(84,201,138,.4)}
+.vr-ok .vr-icon,.vr-ok .vr-head{color:var(--green)}
+.vr-bad{background:rgba(240,106,93,.10);border:1px solid rgba(240,106,93,.45)}
+.vr-bad .vr-icon,.vr-bad .vr-head{color:var(--red)}
+.vr-warn{background:rgba(226,179,65,.10);border:1px solid rgba(226,179,65,.4)}
+.vr-warn .vr-icon,.vr-warn .vr-head{color:var(--yellow)}
+
 /* ---------- console ---------- */
 .console{
   grid-area:console;display:flex;flex-direction:column;
