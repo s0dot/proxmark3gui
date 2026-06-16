@@ -14,6 +14,8 @@ const state = {
   histIdx: -1,
   capture: null, // {cmdSeq, lines:[], targetId, fill}
   clientFound: false,
+  fobs: [],
+  fobSeq: 0,
 };
 let pollTimer = null;
 
@@ -29,6 +31,7 @@ window.addEventListener("DOMContentLoaded", () => {
   wireWriteForms();
   wireSettings();
   wireLaunchers();
+  wireCopy();
   loadPorts();
   syncStatus(); // resume if the server already has a live session (e.g. after refresh)
 });
@@ -663,25 +666,38 @@ function writeVerify(spec) {
       appendConsole("[=] Verifying — reading the tag back to compare…", "sys");
       runCmd(spec.readCmd, {
         onDone: (readLines) => {
-          const v = compareReadback(readLines, spec.expect, spec.kind);
-          renderVerify(spec.targetId, { label: spec.label, expect: spec.expect, ...v });
+          const v = compareReadback(readLines, spec);
+          renderVerify(spec.targetEl || spec.targetId, { label: spec.label, expect: spec.expect, ...v });
         },
       });
     },
   });
 }
 
-function compareReadback(lines, expect, kind) {
+function compareReadback(lines, spec) {
   const text = lines.join("\n");
+  const kind = spec.kind;
+
+  if (kind === "card") {
+    // registry-driven: re-parse the read-back with the type's field regexes
+    const got = parseFields(text, spec.verifyType);
+    const keys = templateKeys(spec.verifyType.clone);
+    const missing = keys.some((k) => got[k] == null || got[k] === "");
+    const gotLabel = fobSummary(spec.verifyType, got) || "(couldn't read the tag)";
+    if (!missing && keys.every((k) => String(got[k]) === String(spec.verifyFields[k])))
+      return { status: "ok", got: gotLabel };
+    if (missing || READ_FAIL.test(text)) return { status: "unverified", got: gotLabel };
+    return { status: "mismatch", got: gotLabel };
+  }
   if (kind === "hidfccn") {
     const m = text.match(/FC:?\s*(\d+)[^]*?CN:?\s*(\d+)/i);
     if (!m) return { status: READ_FAIL.test(text) ? "unverified" : "mismatch", got: "(not read)" };
     const got = `FC ${m[1]} CN ${m[2]}`;
-    return { status: got === expect ? "ok" : "mismatch", got };
+    return { status: got === spec.expect ? "ok" : "mismatch", got };
   }
   // hex-based: did the value we wrote show up when reading back?
-  const want = normHex(expect);
-  if (want && normHex(text).includes(want)) return { status: "ok", got: expect };
+  const want = normHex(spec.expect);
+  if (want && normHex(text).includes(want)) return { status: "ok", got: spec.expect };
   const got = extractReadValue(lines, kind);
   if (!got || READ_FAIL.test(text)) return { status: "unverified", got: got || "(couldn't read the tag)" };
   return { status: "mismatch", got };
@@ -697,8 +713,8 @@ function extractReadValue(lines) {
   return null;
 }
 
-function renderVerify(targetId, v) {
-  const el = document.getElementById(targetId);
+function renderVerify(target, v) {
+  const el = typeof target === "string" ? document.getElementById(target) : target;
   if (!el) return;
   el.classList.remove("hidden");
   const map = {
@@ -719,6 +735,192 @@ function renderVerify(targetId, v) {
     `<div class="vr-cmp"><span class="vr-k">read back</span><code>${esc(v.got)}</code></div>` +
     `</div></div>`;
   el.scrollIntoView({ block: "nearest" });
+}
+
+/* ------------------------------------------------------------------ *
+ *  Copy Fob — registry-driven read → save slot → write → verify
+ * ------------------------------------------------------------------ */
+const REG = window.CARD_REGISTRY || [];
+const regById = (id) => REG.find((r) => r.id === id);
+
+function stripAnsi(s) {
+  return (s || "").replace(/\x1b\[[0-9;]*m/g, "");
+}
+function templateKeys(tpl) {
+  return (tpl.match(/\{(\w+)\}/g) || []).map((s) => s.slice(1, -1));
+}
+function normField(field, val) {
+  if (val == null) return null;
+  if (field.conv === "hex2dec") {
+    const n = parseInt(val.replace(/[^0-9A-Fa-f]/g, ""), 16);
+    return isNaN(n) ? null : String(n);
+  }
+  if (field.kind === "hex") return val.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+  if (field.kind === "dec") {
+    const n = parseInt(val.replace(/[^\d]/g, ""), 10);
+    return isNaN(n) ? null : String(n);
+  }
+  return val.trim();
+}
+function parseFields(text, spec) {
+  const clean = stripAnsi(text);
+  const out = {};
+  for (const f of spec.fields) {
+    const m = clean.match(f.re);
+    out[f.k] = m ? normField(f, m[1]) : null;
+  }
+  return out;
+}
+function detectType(text) {
+  const clean = stripAnsi(text);
+  let best = null;
+  for (const spec of REG) {
+    if (!spec.sig.test(clean)) continue;
+    const fields = parseFields(clean, spec);
+    const keys = templateKeys(spec.clone);
+    const got = keys.filter((k) => fields[k] != null && fields[k] !== "").length;
+    const score = got * 2 + 1;
+    if (!best || score > best.score) best = { spec, fields, score, complete: got === keys.length };
+  }
+  return best;
+}
+function buildClone(spec, fields, extra) {
+  let cmd = spec.clone
+    .replace(/\s*--?[A-Za-z0-9]+\s+\{(\w+)\}/g, (m, k) =>
+      fields[k] == null || fields[k] === "" ? "" : m.replace(`{${k}}`, fields[k]))
+    .replace(/\{(\w+)\}/g, (_, k) => (fields[k] != null ? fields[k] : ""));
+  if (extra) cmd += " " + extra;
+  return cmd.replace(/\s+/g, " ").trim();
+}
+function fobSummary(spec, fields) {
+  const parts = [];
+  for (const f of spec.fields) {
+    const v = fields[f.k];
+    if (v != null && v !== "") parts.push(`${f.k.toUpperCase()} ${v}`);
+  }
+  return parts.join(" · ");
+}
+
+function loadFobs() {
+  try {
+    const d = JSON.parse(localStorage.getItem("pm3.fobs") || "{}");
+    state.fobs = Array.isArray(d.fobs) ? d.fobs : [];
+    state.fobSeq = d.seq || state.fobs.length;
+  } catch (e) {
+    state.fobs = [];
+    state.fobSeq = 0;
+  }
+}
+function saveFobs() {
+  localStorage.setItem("pm3.fobs", JSON.stringify({ fobs: state.fobs, seq: state.fobSeq }));
+}
+
+function wireCopy() {
+  loadFobs();
+  renderFobs();
+  $("#readFobBtn").addEventListener("click", captureRead);
+  $("#clearFobsBtn").addEventListener("click", () => {
+    if (state.fobs.length && !confirm("Forget all saved fobs?")) return;
+    state.fobs = [];
+    state.fobSeq = 0;
+    saveFobs();
+    renderFobs();
+  });
+  $("#fobList").addEventListener("click", (e) => {
+    const card = e.target.closest(".fob");
+    if (!card) return;
+    const slot = +card.dataset.slot;
+    if (e.target.closest(".fob-del")) {
+      state.fobs = state.fobs.filter((f) => f.slot !== slot);
+      saveFobs();
+      renderFobs();
+    } else if (e.target.closest(".fob-write")) {
+      writeFob(state.fobs.find((f) => f.slot === slot), card);
+    }
+  });
+}
+
+function captureRead() {
+  if (!state.connected) return appendConsole("[!] Connect first.", "sys");
+  if (!REG.length) return appendConsole("[!] Card registry not loaded.", "sys");
+  appendConsole("[=] Reading fob (lf search)…", "sys");
+  runCmd("lf search", {
+    onDone: (lines) => {
+      const text = lines.join("\n");
+      const hit = detectType(text);
+      if (!hit) return appendConsole("[!] Couldn't identify the tag. Try `lf search` in the console.", "sys");
+      if (hit.complete) return addFob(hit.spec, hit.fields, text);
+      appendConsole(`[=] ${hit.spec.name} detected — reading details…`, "sys");
+      runCmd(hit.spec.readCmd, {
+        onDone: (l2) => addFob(hit.spec, { ...hit.fields, ...parseFields(l2.join("\n"), hit.spec) }, l2.join("\n")),
+      });
+    },
+  });
+}
+
+function addFob(spec, fields, rawText) {
+  const keys = templateKeys(spec.clone);
+  if (keys.some((k) => fields[k] == null || fields[k] === "")) {
+    appendConsole(`[!] ${spec.name} read, but couldn't extract all clone fields — not saved.`, "sys");
+    return;
+  }
+  state.fobSeq += 1;
+  state.fobs.push({
+    slot: state.fobSeq,
+    label: "FOB" + state.fobSeq,
+    typeId: spec.id,
+    typeName: spec.name,
+    fields,
+    extra: spec.extra ? spec.extra(stripAnsi(rawText)) : "",
+  });
+  saveFobs();
+  renderFobs();
+  appendConsole(`[+] Saved FOB${state.fobSeq}: ${spec.name} — ${fobSummary(spec, fields)}`, "sys");
+}
+
+function renderFobs() {
+  const list = $("#fobList");
+  if (!list) return;
+  $("#fobEmpty").classList.toggle("hidden", state.fobs.length > 0);
+  list.innerHTML = state.fobs
+    .map((fob) => {
+      const spec = regById(fob.typeId) || { fields: [], clone: "" };
+      const chips = spec.fields
+        .filter((f) => fob.fields[f.k] != null && fob.fields[f.k] !== "")
+        .map((f) => `<div class="chip"><span class="k">${esc(f.k)}</span><span class="v">${esc(fob.fields[f.k])}</span></div>`)
+        .join("");
+      const cmd = buildClone(spec, fob.fields, fob.extra);
+      return (
+        `<div class="fob" data-slot="${fob.slot}">` +
+        `<div class="fob-head"><span class="fob-slot">${esc(fob.label)}</span>` +
+        `<span class="fob-type">${esc(fob.typeName)}</span>` +
+        `<button class="fob-del" title="Forget">&#10005;</button></div>` +
+        `<div class="fob-fields">${chips}</div>` +
+        `<div class="fob-cmd">${esc(cmd)}</div>` +
+        `<div class="fob-foot"><button class="btn btn-primary fob-write">&#9998; Write to blank</button>` +
+        `<span class="fob-verify"></span></div></div>`
+      );
+    })
+    .join("");
+}
+
+function writeFob(fob, card) {
+  if (!fob) return;
+  if (!state.connected) return appendConsole("[!] Connect first.", "sys");
+  const spec = regById(fob.typeId);
+  if (!spec) return;
+  const cmd = buildClone(spec, fob.fields, fob.extra);
+  if (!confirm(`Write ${fob.label} (${spec.name}) to the blank T5577 on the antenna?\n\n${cmd}`)) return;
+  writeVerify({
+    writeCmd: cmd,
+    readCmd: spec.readCmd,
+    kind: "card",
+    verifyType: spec,
+    verifyFields: fob.fields,
+    expect: fobSummary(spec, fob.fields),
+    label: `${fob.label} → ${spec.name}`,
+    targetEl: card.querySelector(".fob-verify"),
+  });
 }
 
 /* ------------------------------------------------------------------ *

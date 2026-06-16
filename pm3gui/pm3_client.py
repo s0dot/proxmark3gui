@@ -500,25 +500,39 @@ def _hw_tune(self, raw):
 
 
 def _lf_search(self, raw):
-    self.state["lf_id"] = "0F0368568B"
-    self.state["lf_type"] = "EM410x"
-    return [
-        "[=] NOTE: some demods output possible binary",
-        "[=] checking for known tags...",
+    # cycle EM410x -> HID -> AWID so the Copy-fob demo shows multiple types
+    seq = self.state.get("search_seq", 0)
+    self.state["search_seq"] = seq + 1
+    head = ["[=] checking for known tags...", ""]
+    tail = ["", "[+] Couldn't identify a chip in HF, try `hf search`"]
+    kind = ("em", "hid", "awid")[seq % 3]
+    if kind == "em":
+        idv = self.state.get("lf_id") or "0F0368568B"
+        self.state["lf_id"] = idv
+        self.state["lf_type"] = "EM410x"
+        return head + [
+            f"[+] \x1b[32mEM 410x ID {idv}\x1b[0m",
+            "[+] EM410x ( RF/64 )",
+            "",
+            "[+] Valid \x1b[32mEM410x\x1b[0m ID found!",
+        ] + tail
+    if kind == "hid":
+        fc = self.state.get("hid_fc") or "118"
+        cn = self.state.get("hid_cn") or "1603"
+        return head + [
+            f"[+] [H10301  ] HID H10301 26-bit            FC: \x1b[32m{fc}\x1b[0m  CN: \x1b[32m{cn}\x1b[0m  parity ( ok )",
+            "[+] found 1 matching format",
+            "",
+            "[+] Valid \x1b[32mHID Prox\x1b[0m ID found!",
+        ] + tail
+    fmt = self.state.get("awid_fmt") or "26"
+    fc = self.state.get("awid_fc") or "123"
+    cn = self.state.get("awid_cn") or "1337"
+    return head + [
+        f"[+] \x1b[32mAWID\x1b[0m - len: {fmt}  FC: {fc}  Card: {cn} - Wiegand: 011868c2, Raw: 011868c2f0000000",
         "",
-        "[+] \x1b[32mEM 410x ID 0F0368568B\x1b[0m",
-        "[+] EM410x ( RF/64 )",
-        "[=] -------- Possible de-scramble patterns ---------",
-        "[+] Unique TAG ID....... F0C06A1AD1",
-        "[+] HoneyWell IdentKey",
-        "[+]     DEZ 8.......... 06641547",
-        "[+]     DEZ 10.......... 0057153675",
-        "[=] ------------------------------------------------",
-        "",
-        "[+] Valid \x1b[32mEM410x\x1b[0m ID found!",
-        "",
-        "[+] Couldn't identify a chip in HF, try `hf search`",
-    ]
+        "[+] Valid \x1b[32mAWID\x1b[0m found!",
+    ] + tail
 
 
 def _hf_search(self, raw):
@@ -580,13 +594,20 @@ def _lf_em_reader(self, raw):
 
 
 def _lf_hid_read(self, raw):
-    fc = self.state.get("hid_fc") or "123"
-    cn = self.state.get("hid_cn") or "4567"
+    fc = self.state.get("hid_fc") or "118"
+    cn = self.state.get("hid_cn") or "1603"
     return [
-        "[+] \x1b[32mHID\x1b[0m H10301 26-bit",
-        "[+]  bin: 1010000010..",
-        f"[+]  FC: {fc}  CN: {cn}",
-        "[+]  Raw: 2004263f88",
+        f"[+] [H10301  ] HID H10301 26-bit            FC: \x1b[32m{fc}\x1b[0m  CN: \x1b[32m{cn}\x1b[0m  parity ( ok )",
+        "[+] found 1 matching format",
+    ]
+
+
+def _lf_awid_reader(self, raw):
+    fmt = self.state.get("awid_fmt") or "26"
+    fc = self.state.get("awid_fc") or "123"
+    cn = self.state.get("awid_cn") or "1337"
+    return [
+        f"[+] \x1b[32mAWID\x1b[0m - len: {fmt}  FC: {fc}  Card: {cn} - Wiegand: 011868c2, Raw: 011868c2f0000000",
     ]
 
 
@@ -617,6 +638,16 @@ def _lf_clone(self, raw):
             self.state["hid_fc"] = fc
         if cn:
             self.state["hid_cn"] = cn
+    elif "awid" in low:
+        fmt = _arg(raw, "--fmt")
+        fc = _arg(raw, "--fc")
+        cn = _arg(raw, "--cn")
+        if fmt:
+            self.state["awid_fmt"] = fmt
+        if fc:
+            self.state["awid_fc"] = fc
+        if cn:
+            self.state["awid_cn"] = cn
     return [
         "[=] Preparing to clone to T55x7 tag...",
         "[=] Writing block 0...",
@@ -791,6 +822,8 @@ _DISPATCH = [
     ("lf hid read", _lf_hid_read),
     ("lf hid reader", _lf_hid_read),
     ("lf hid clone", _lf_clone),
+    ("lf awid reader", _lf_awid_reader),
+    ("lf awid clone", _lf_clone),
     ("lf indala clone", _lf_clone),
     ("lf t55xx detect", _lf_t55_detect),
     ("lf t55xx write", _lf_t55_write),

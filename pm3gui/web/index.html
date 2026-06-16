@@ -48,6 +48,7 @@
   <nav class="sidebar">
     <button class="nav-item active" data-panel="dashboard"><span class="ni">&#9678;</span> Dashboard</button>
     <button class="nav-item" data-panel="identify"><span class="ni">&#9906;</span> Identify</button>
+    <button class="nav-item" data-panel="copy"><span class="ni">&#11014;</span> Copy Fob</button>
     <button class="nav-item" data-panel="lfclone"><span class="ni">&#128225;</span> LF Write</button>
     <button class="nav-item" data-panel="hfdump"><span class="ni">&#128179;</span> HF Dump</button>
     <button class="nav-item" data-panel="hfwrite"><span class="ni">&#9999;</span> HF Write</button>
@@ -119,6 +120,28 @@
         </button>
       </div>
       <div id="idResult" class="result-box hidden"></div>
+    </section>
+
+    <!-- COPY FOB -------------------------------------------------------- -->
+    <section id="panel-copy" class="panel">
+      <h1>Copy Fob</h1>
+      <p class="lead">Read a fob to save it to a slot, then write any saved fob onto a blank
+        T5577 — no typing. Supports every Iceman LF card type.</p>
+
+      <div class="copy-bar">
+        <button id="readFobBtn" class="btn btn-primary btn-lg">&#11015; Read fob</button>
+        <span class="muted">place a fob on the antenna &middot; auto-detects the type</span>
+        <span style="flex:1"></span>
+        <button id="clearFobsBtn" class="btn">Clear all</button>
+      </div>
+
+      <div id="fobEmpty" class="fob-empty">
+        No fobs saved yet — put a fob on the antenna and hit <b>Read fob</b>.
+      </div>
+      <div id="fobList" class="fob-list"></div>
+
+      <p class="muted" style="margin-top:18px">Write a blank <b>T5577</b> (the universal rewritable
+        125&nbsp;kHz chip). After writing, the GUI reads it back and verifies it matches.</p>
     </section>
 
     <!-- LF WRITE -------------------------------------------------------- -->
@@ -292,6 +315,7 @@
     </form>
   </section>
 
+  <script src="cards.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

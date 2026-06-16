@@ -161,6 +161,26 @@ body.connecting .dot{background:var(--yellow);box-shadow:0 0 10px var(--yellow);
 .chip.ok .v{color:var(--green)}
 .result-empty{color:var(--dim);font-style:italic}
 
+/* copy-fob */
+.copy-bar{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.fob-empty{color:var(--dim);font-style:italic;padding:24px;text-align:center;background:var(--panel);border:1px dashed var(--border2);border-radius:11px}
+.fob-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.fob{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--cyan);border-radius:11px;padding:14px 15px;display:flex;flex-direction:column;gap:9px}
+.fob-head{display:flex;align-items:center;gap:9px}
+.fob-slot{font-weight:800;font-size:15px;color:#fff}
+.fob-type{font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--cyan);background:rgba(55,211,230,.12);border:1px solid rgba(55,211,230,.35);padding:2px 8px;border-radius:6px}
+.fob-del{margin-left:auto;background:transparent;border:1px solid var(--border2);color:var(--faint);width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:12px;line-height:1}
+.fob-del:hover{color:var(--red);border-color:var(--red)}
+.fob-fields{display:flex;flex-wrap:wrap;gap:6px}
+.fob-fields .chip{padding:4px 9px}
+.fob-cmd{font-family:var(--mono);font-size:11px;color:var(--faint);background:var(--bg2);border-radius:6px;padding:6px 9px;word-break:break-all}
+.fob-foot{display:flex;align-items:center;gap:10px;margin-top:2px}
+.fob-write{white-space:nowrap}
+.fob-verify{flex:1}
+.fob-verify .verify{margin-top:0;padding:9px 11px}
+.fob-verify .vr-icon{font-size:17px}
+.fob-verify .vr-head{font-size:12px;margin-bottom:4px}
+
 /* write-verify verdict */
 .verify{display:flex;gap:13px;align-items:flex-start;padding:12px 14px;border-radius:9px;margin-top:2px}
 .vr-icon{font-size:22px;line-height:1}
@@ -225,4 +245,6 @@ body.disconnected #lfWriteBtn,
 body.disconnected #t5WriteBtn,
 body.disconnected #mfWriteBtn,
 body.disconnected #magUidBtn,
-body.disconnected #muWriteBtn{opacity:.5;pointer-events:none}
+body.disconnected #muWriteBtn,
+body.disconnected #readFobBtn,
+body.disconnected .fob-write{opacity:.5;pointer-events:none}
