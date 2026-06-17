@@ -143,3 +143,22 @@ window.CARD_REGISTRY = [
       { k: "xor", re: /G-Prox-II[^\n]*?xor:\s*(\d+)/i, kind: "dec" },
     ] },
 ];
+
+/* HF copy — dump-based: read+dump to a file, then restore to a MAGIC/writable card.
+ * id, name, sig (identify in `hf search`), identify cmd, uidRe (UID/CSN), dump cmd,
+ * prefix (dump-file prefix), csn (true → label as CSN).  MIFARE Classic write is
+ * handled specially (magic Gen1a `cload` vs Gen2 `restore`). */
+window.HF_REGISTRY = [
+  { id: "mfc", name: "MIFARE Classic", sig: /MIFARE Classic|MIFARE Plus|\bMFC\b/i,
+    identify: "hf mf info", uidRe: /UID:\s*([0-9A-Fa-f ]{8,})/i,
+    sizeRe: /MIFARE (?:Classic|Plus)\s*(Mini|1K|2K|4K)/i, prefix: "hf-mf-", magic: true },
+
+  { id: "mfu", name: "MIFARE Ultralight / NTAG", sig: /Ultralight|NTAG|MF0|MFU/i,
+    identify: "hf mfu info", uidRe: /UID:\s*([0-9A-Fa-f ]{8,})/i,
+    dump: "hf mfu dump", write: "hf mfu restore -f {dump} -s", prefix: "hf-mfu-" },
+
+  { id: "iclass", name: "iCLASS / Picopass", sig: /iClass|Picopass|iCLASS/i,
+    identify: "hf iclass info", uidRe: /CSN[.:\s]*([0-9A-Fa-f ]{8,}?)(?:\s+uid|\s*$)/im, csn: true,
+    dump: "hf iclass dump --ki 0", write: "hf iclass restore -f {dump} --first 6 --last 18 --ki 0",
+    prefix: "hf-iclass-" },
+];

@@ -536,18 +536,51 @@ def _lf_search(self, raw):
 
 
 def _hf_search(self, raw):
-    self.state["hf_uid"] = "04 7A 8C B2 19 50 80"
+    self.state["hf_uid"] = "9A 5C 2E F1"
     return [
         "[=] Checking for known tags...",
         "",
-        "[+]  UID: 04 7A 8C B2 19 50 80",
-        "[+] ATQA: 00 44",
-        "[+]  SAK: 00 [2]",
+        "[+]  UID: 9A 5C 2E F1",
+        "[+] ATQA: 00 04",
+        "[+]  SAK: 08 [2]",
         "[+] Possible types:",
-        "[+]    MIFARE Ultralight EV1 48bytes (MF0UL1101)",
+        "[+]    MIFARE Classic 1K",
         "",
-        "[+] Valid \x1b[32mISO 14443-A\x1b[0m tag found",
+        "[+] Valid \x1b[32mMIFARE Classic\x1b[0m tag found",
     ]
+
+
+def _hf_mf_cload(self, raw):
+    return [
+        "[=] Loading dump to magic Gen1a card...",
+        "[+] Writing block 0 (UID)...",
+        "[+] Loaded 64 blocks",
+        "[+] \x1b[32mDone!\x1b[0m",
+    ]
+
+
+def _hf_mf_restore(self, raw):
+    return [
+        "[=] Restoring dump to card using found keys...",
+        "[+] Wrote 64 / 64 blocks",
+        "[+] \x1b[32mDone!\x1b[0m",
+    ]
+
+
+def _hf_mfu_dump(self, raw):
+    return [
+        "[=] Dumping Ultralight / NTAG memory...",
+        "[+] Saved 80 bytes to binary file hf-mfu-04AABBCCDD-dump.bin",
+        "[+] Saved to json file hf-mfu-04AABBCCDD-dump.json",
+    ]
+
+
+def _hf_mfu_restore(self, raw):
+    return ["[=] Restoring pages to tag...", "[+] \x1b[32mDone!\x1b[0m"]
+
+
+def _hf_iclass_restore(self, raw):
+    return ["[=] Restoring blocks 6-18 to iCLASS...", "[+] \x1b[32mDone!\x1b[0m"]
 
 
 def _arg(raw, *names):
@@ -838,8 +871,14 @@ _DISPATCH = [
     ("hf mf wrbl", _hf_mf_wrbl),
     ("hf mf rdbl", _hf_mf_rdbl),
     ("hf mf csetuid", _hf_csetuid),
+    ("hf mf cload", _hf_mf_cload),
+    ("hf mf restore", _hf_mf_restore),
     ("hf iclass info", _hf_iclass_info),
     ("hf iclass dump", _hf_iclass_dump),
+    ("hf iclass restore", _hf_iclass_restore),
+    ("hf mfu info", _hf_14a_info),
+    ("hf mfu dump", _hf_mfu_dump),
+    ("hf mfu restore", _hf_mfu_restore),
     ("hf mfu wrbl", _hf_mfu_wrbl),
     ("hf mfu rdbl", _hf_mfu_rdbl),
 ]

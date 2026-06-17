@@ -70,12 +70,17 @@ Open the **gear icon** in the top bar to pick which `proxmark3.exe` to drive:
 
 * **Dashboard** — one-click *Auto detect*, plus `hw status` / `hw version` / `hw tune` / `hw ping`.
 * **Identify** — LF search, HF search, NFC (ISO-14443A) info; parsed UID/ATQA/SAK/ID chips.
-* **Copy Fob** — read a fob → it auto-detects the type and saves to a slot (**FOB1, FOB2, …**);
+* **Copy Fob** (LF) — read a fob → it auto-detects the type and saves to a slot (**FOB1, FOB2, …**);
   pick any slot → **Write to blank** clones it to a T5577 and verifies the read-back. Covers
   **every Iceman LF clone type** (EM410x, HID, AWID, Indala, ioProx, FDX-B, Paradox, Pyramid,
   Viking, Visa2000, NexWatch, Securakey, KERI, Gallagher, Noralsy, Jablotron, Presco, Nedap,
   Motorola, Idteck, Destron, PAC, G-Prox-II). Slots persist for the session. Driven by a
   registry whose clone syntax is verified against the bundled client (`pm3gui/web/cards.js`).
+* **HF Copy** — dump a 13.56 MHz card to a slot (**CARD1, CARD2, …**), then restore it to a
+  **magic / writable** card and verify. MIFARE Classic (`autopwn` → `cload` for Gen1a or
+  `restore` for Gen2), Ultralight/NTAG (`mfu dump`/`restore`), iCLASS (`iclass dump`/`restore`).
+  ⚠ HF copying needs a magic/writable target (a blank's UID is locked) and, for MIFARE Classic,
+  key recovery first; hardened/EV1 and DESFire/secure cards may not be copyable.
 * **LF Clone** — read EM410x / HID / Indala / T55xx, then write to a blank **T5577**
   (auto-fills the ID it just read).
 * **HF Dump** — MIFARE Classic `info` / `autopwn` / `dump`, and iCLASS `info` / `dump`.

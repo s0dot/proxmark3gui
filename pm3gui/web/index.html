@@ -49,6 +49,7 @@
     <button class="nav-item active" data-panel="dashboard"><span class="ni">&#9678;</span> Dashboard</button>
     <button class="nav-item" data-panel="identify"><span class="ni">&#9906;</span> Identify</button>
     <button class="nav-item" data-panel="copy"><span class="ni">&#11014;</span> Copy Fob</button>
+    <button class="nav-item" data-panel="hfcopy"><span class="ni">&#128179;</span> HF Copy</button>
     <button class="nav-item" data-panel="lfclone"><span class="ni">&#128225;</span> LF Write</button>
     <button class="nav-item" data-panel="hfdump"><span class="ni">&#128179;</span> HF Dump</button>
     <button class="nav-item" data-panel="hfwrite"><span class="ni">&#9999;</span> HF Write</button>
@@ -142,6 +143,27 @@
 
       <p class="muted" style="margin-top:18px">Write a blank <b>T5577</b> (the universal rewritable
         125&nbsp;kHz chip). After writing, the GUI reads it back and verifies it matches.</p>
+    </section>
+
+    <!-- HF COPY --------------------------------------------------------- -->
+    <section id="panel-hfcopy" class="panel">
+      <h1>HF Copy</h1>
+      <p class="lead">Dump a 13.56&nbsp;MHz card to a slot, then restore it onto a
+        <b>magic / writable</b> card. MIFARE Classic &middot; Ultralight/NTAG &middot; iCLASS.</p>
+
+      <div class="copy-bar">
+        <button id="readHfBtn" class="btn btn-primary btn-lg">&#11015; Read &amp; dump</button>
+        <span class="muted">place a card on the antenna &middot; MIFARE Classic recovers keys first (may take a while)</span>
+        <span style="flex:1"></span>
+        <button id="clearHfBtn" class="btn">Clear all</button>
+      </div>
+
+      <div class="hint-line" style="margin:0 0 16px">&#9888; HF copying needs a <b>magic / writable target</b>
+        card — a normal blank's UID is locked. MIFARE Classic also needs its keys recovered; hardened/EV1
+        and DESFire/secure cards may not be copyable.</div>
+
+      <div id="hfEmpty" class="fob-empty">No cards dumped yet — put a card on the antenna and hit <b>Read &amp; dump</b>.</div>
+      <div id="hfList" class="fob-list"></div>
     </section>
 
     <!-- LF WRITE -------------------------------------------------------- -->

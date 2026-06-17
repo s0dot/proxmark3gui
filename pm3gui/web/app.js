@@ -16,6 +16,8 @@ const state = {
   clientFound: false,
   fobs: [],
   fobSeq: 0,
+  hfCards: [],
+  hfSeq: 0,
 };
 let pollTimer = null;
 
@@ -32,6 +34,7 @@ window.addEventListener("DOMContentLoaded", () => {
   wireSettings();
   wireLaunchers();
   wireCopy();
+  wireHfCopy();
   loadPorts();
   syncStatus(); // resume if the server already has a live session (e.g. after refresh)
 });
@@ -920,6 +923,200 @@ function writeFob(fob, card) {
     expect: fobSummary(spec, fob.fields),
     label: `${fob.label} → ${spec.name}`,
     targetEl: card.querySelector(".fob-verify"),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ *  HF Copy — dump → save slot → restore to magic card → verify
+ * ------------------------------------------------------------------ */
+const HFREG = window.HF_REGISTRY || [];
+const hfById = (id) => HFREG.find((r) => r.id === id);
+
+function grab(text, re) {
+  if (!re) return null;
+  const m = stripAnsi(text).match(re);
+  return m ? (m[1] || m[2] || "").trim().replace(/\s+/g, " ") : null;
+}
+
+function loadHf() {
+  try {
+    const d = JSON.parse(localStorage.getItem("pm3.hfcards") || "{}");
+    state.hfCards = Array.isArray(d.cards) ? d.cards : [];
+    state.hfSeq = d.seq || state.hfCards.length;
+  } catch (e) {
+    state.hfCards = [];
+    state.hfSeq = 0;
+  }
+}
+function saveHf() {
+  localStorage.setItem("pm3.hfcards", JSON.stringify({ cards: state.hfCards, seq: state.hfSeq }));
+}
+
+function wireHfCopy() {
+  loadHf();
+  renderHf();
+  $("#readHfBtn").addEventListener("click", hfReadDump);
+  $("#clearHfBtn").addEventListener("click", () => {
+    if (state.hfCards.length && !confirm("Forget all dumped cards? (the dump files on disk are kept)")) return;
+    state.hfCards = [];
+    state.hfSeq = 0;
+    saveHf();
+    renderHf();
+  });
+  $("#hfList").addEventListener("click", (e) => {
+    const card = e.target.closest(".fob");
+    if (!card) return;
+    const slot = +card.dataset.slot;
+    const item = state.hfCards.find((c) => c.slot === slot);
+    if (e.target.closest(".fob-del")) {
+      state.hfCards = state.hfCards.filter((c) => c.slot !== slot);
+      saveHf();
+      renderHf();
+    } else if (e.target.closest(".fob-write")) {
+      writeHf(item, card);
+    }
+  });
+  $("#hfList").addEventListener("change", (e) => {
+    if (e.target.classList.contains("magic-sel")) {
+      const item = state.hfCards.find((c) => c.slot === +e.target.closest(".fob").dataset.slot);
+      if (item) { item.magic = e.target.value; saveHf(); }
+    }
+  });
+}
+
+function hfReadDump() {
+  if (!state.connected) return appendConsole("[!] Connect first.", "sys");
+  if (!HFREG.length) return appendConsole("[!] HF registry not loaded.", "sys");
+  appendConsole("[=] Reading HF card (hf search)…", "sys");
+  runCmd("hf search", {
+    onDone: (lines) => {
+      const spec = HFREG.find((s) => s.sig.test(stripAnsi(lines.join("\n"))));
+      if (!spec) return appendConsole("[!] No HF card identified. Try `hf search` in the console.", "sys");
+      appendConsole(`[=] ${spec.name} detected — reading info…`, "sys");
+      runCmd(spec.identify, {
+        onDone: (il) => {
+          const itext = il.join("\n");
+          const uid = grab(itext, spec.uidRe) || "";
+          const size = spec.sizeRe ? grab(itext, spec.sizeRe) || "1K" : "";
+          const dumpCmd =
+            spec.id === "mfc" ? "hf mf autopwn" + (/4K/i.test(size) ? " --4k" : " --1k") : spec.dump;
+          appendConsole(
+            `[=] ${spec.name} ${spec.csn ? "CSN" : "UID"} ${uid || "?"} — ` +
+              (spec.id === "mfc" ? "recovering keys + dumping (can take a while)…" : "dumping…"),
+            "sys"
+          );
+          runCmd(dumpCmd, {
+            onDone: (dl) => {
+              const dtext = dl.join("\n");
+              const file = grab(dtext, /to (?:binary|json) file [`']?([^`'\s]+)[`']?/i);
+              const base = file
+                ? file.replace(/\.(bin|json|eml)$/i, "")
+                : uid
+                ? `${spec.prefix}${uid.replace(/\s/g, "")}-dump`
+                : null;
+              if (!base)
+                return appendConsole(
+                  `[!] ${spec.name} produced no dump file (keys not found / read-protected?).`,
+                  "sys"
+                );
+              addHfCard(spec, { uid, size, dumpbase: base });
+            },
+          });
+        },
+      });
+    },
+  });
+}
+
+function addHfCard(spec, info) {
+  state.hfSeq += 1;
+  state.hfCards.push({
+    slot: state.hfSeq,
+    label: "CARD" + state.hfSeq,
+    id: spec.id,
+    typeName: spec.name + (info.size ? " " + info.size : ""),
+    uid: info.uid,
+    size: info.size,
+    csn: !!spec.csn,
+    dumpbase: info.dumpbase,
+    magic: "gen1a",
+  });
+  saveHf();
+  renderHf();
+  appendConsole(`[+] Saved CARD${state.hfSeq}: ${spec.name} — ${spec.csn ? "CSN" : "UID"} ${info.uid} (${info.dumpbase})`, "sys");
+}
+
+function renderHf() {
+  const list = $("#hfList");
+  if (!list) return;
+  $("#hfEmpty").classList.toggle("hidden", state.hfCards.length > 0);
+  list.innerHTML = state.hfCards
+    .map((c) => {
+      const idlbl = c.csn ? "CSN" : "UID";
+      const magicSel =
+        c.id === "mfc"
+          ? `<select class="magic-sel" title="target magic type">` +
+            `<option value="gen1a"${c.magic === "gen1a" ? " selected" : ""}>Gen1a (cload)</option>` +
+            `<option value="gen2"${c.magic === "gen2" ? " selected" : ""}>Gen2/CUID (restore)</option></select>`
+          : "";
+      return (
+        `<div class="fob" data-slot="${c.slot}">` +
+        `<div class="fob-head"><span class="fob-slot">${esc(c.label)}</span>` +
+        `<span class="fob-type">${esc(c.typeName)}</span>` +
+        `<button class="fob-del" title="Forget">&#10005;</button></div>` +
+        `<div class="fob-fields"><div class="chip"><span class="k">${idlbl}</span><span class="v">${esc(c.uid || "?")}</span></div>` +
+        `<div class="chip"><span class="k">dump</span><span class="v">${esc(c.dumpbase)}</span></div></div>` +
+        `<div class="fob-foot">${magicSel}<button class="btn btn-primary fob-write">&#9998; Write to magic</button>` +
+        `<span class="fob-verify"></span></div></div>`
+      );
+    })
+    .join("");
+}
+
+function writeHf(c, cardEl) {
+  if (!c) return;
+  if (!state.connected) return appendConsole("[!] Connect first.", "sys");
+  const spec = hfById(c.id);
+  let cmd;
+  if (c.id === "mfc") {
+    cmd =
+      c.magic === "gen2"
+        ? `hf mf restore ${/4K/i.test(c.size || "") ? "--4k" : "--1k"} -f ${c.dumpbase} -k ${c.dumpbase.replace(/-dump$/, "-key")} --force`
+        : `hf mf cload -f ${c.dumpbase}`;
+  } else {
+    cmd = spec.write.replace("{dump}", c.dumpbase);
+  }
+  if (!confirm(`Write ${c.label} (${c.typeName}) to the MAGIC / writable card on the antenna?\n\n${cmd}\n\nA normal blank won't work — the target must be a magic / writable card.`))
+    return;
+  runCmd(cmd, {
+    onDone: () => {
+      appendConsole("[=] Verifying — reading the target card back…", "sys");
+      runCmd(spec.identify, {
+        onDone: (vl) => {
+          const vtext = vl.join("\n");
+          const got = grab(vtext, spec.uidRe) || "";
+          const want = c.uid || "";
+          const idlbl = c.csn ? "CSN" : "UID";
+          const status =
+            want && normHex(got) === normHex(want)
+              ? "ok"
+              : !got || READ_FAIL.test(vtext)
+              ? "unverified"
+              : "mismatch";
+          renderVerify(cardEl.querySelector(".fob-verify"), {
+            label: `${c.label} → ${c.typeName}`,
+            expect: `${idlbl} ${want}`,
+            got: `${idlbl} ${got || "(none)"}`,
+            status,
+          });
+          appendConsole(
+            (status === "ok" ? "[+] Write verified" : status === "mismatch" ? "[!] Verify FAILED" : "[?] Couldn't verify") +
+              " — " + c.label,
+            "sys"
+          );
+        },
+      });
+    },
   });
 }
 

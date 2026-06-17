@@ -247,4 +247,5 @@ body.disconnected #mfWriteBtn,
 body.disconnected #magUidBtn,
 body.disconnected #muWriteBtn,
 body.disconnected #readFobBtn,
+body.disconnected #readHfBtn,
 body.disconnected .fob-write{opacity:.5;pointer-events:none}
