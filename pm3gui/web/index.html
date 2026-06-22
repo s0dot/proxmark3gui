@@ -153,7 +153,9 @@
 
       <div class="copy-bar">
         <button id="readHfBtn" class="btn btn-primary btn-lg">&#11015; Read &amp; dump</button>
-        <span class="muted">place a card on the antenna &middot; MIFARE Classic recovers keys first (may take a while)</span>
+        <span class="muted">place a card on the antenna</span>
+        <input id="mfKeys" class="cfg-in" style="max-width:240px" spellcheck="false"
+               placeholder="extra MIFARE keys / dict (optional)" title="space-separated 12-hex keys, or a dictionary filename — used by autopwn">
         <span style="flex:1"></span>
         <button id="clearHfBtn" class="btn">Clear all</button>
       </div>

@@ -984,6 +984,12 @@ function wireHfCopy() {
   });
 }
 
+function mfExtraKeys() {
+  const v = ($("#mfKeys") ? $("#mfKeys").value : "").trim();
+  if (!v) return "";
+  return " " + v.split(/\s+/).map((t) => (/^[0-9A-Fa-f]{12}$/.test(t) ? `-k ${t.toUpperCase()}` : `-f ${t}`)).join(" ");
+}
+
 function hfReadDump() {
   if (!state.connected) return appendConsole("[!] Connect first.", "sys");
   if (!HFREG.length) return appendConsole("[!] HF registry not loaded.", "sys");
@@ -999,7 +1005,7 @@ function hfReadDump() {
           const uid = grab(itext, spec.uidRe) || "";
           const size = spec.sizeRe ? grab(itext, spec.sizeRe) || "1K" : "";
           const dumpCmd =
-            spec.id === "mfc" ? "hf mf autopwn" + (/4K/i.test(size) ? " --4k" : " --1k") : spec.dump;
+            spec.id === "mfc" ? "hf mf autopwn" + (/4K/i.test(size) ? " --4k" : " --1k") + mfExtraKeys() : spec.dump;
           appendConsole(
             `[=] ${spec.name} ${spec.csn ? "CSN" : "UID"} ${uid || "?"} — ` +
               (spec.id === "mfc" ? "recovering keys + dumping (can take a while)…" : "dumping…"),
