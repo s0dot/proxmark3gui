@@ -1077,7 +1077,7 @@ function renderHf() {
       const magicSel =
         c.id === "mfc"
           ? `<select class="magic-sel" title="target magic type">` +
-            ["gen1a:Gen1a (cload)", "gen2:Gen2/CUID (restore)", "gen3:Gen3 (restore+gen3uid)", "gen4:Gen4/UMC (gload)"]
+            ["gen1a:Gen1a (cload)", "gen2:Gen2/CUID (restore)", "gen3:Gen3 (restore+gen3uid)", "gen4:Gen4 GTU (gload)", "gdm:Gen4 GDM/USCUID (cload --gdm)"]
               .map((o) => {
                 const i = o.indexOf(":");
                 const v = o.slice(0, i);
@@ -1135,6 +1135,7 @@ async function writeHf(c, cardEl) {
     const restore = `hf mf restore ${rflag} -f ${c.dumpbase} -k ${kf} --force`;
     cmds =
       c.magic === "gen4" ? [`hf mf gload ${gflag} -f ${c.dumpbase}`]
+      : c.magic === "gdm" ? [`hf mf cload --gdm ${gflag} -f ${c.dumpbase}`]
       : c.magic === "gen3" ? [restore, `hf mf gen3uid --uid ${uid}`]
       : c.magic === "gen2" ? [restore]
       : [`hf mf cload ${gflag} -f ${c.dumpbase}`]; // gen1a
