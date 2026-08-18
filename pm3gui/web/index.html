@@ -133,6 +133,7 @@
         <button id="readFobBtn" class="btn btn-primary btn-lg">&#11015; Read fob</button>
         <span class="muted">place a fob on the antenna &middot; auto-detects the type</span>
         <span style="flex:1"></span>
+        <button id="wipeT5Btn" class="btn" title="Blank a T5577 tag">&#9003; Wipe T5577</button>
         <button id="clearFobsBtn" class="btn">Clear all</button>
       </div>
 
@@ -157,6 +158,10 @@
         <input id="mfKeys" class="cfg-in" style="max-width:240px" spellcheck="false"
                placeholder="extra MIFARE keys / dict (optional)" title="space-separated 12-hex keys, or a dictionary filename — used by autopwn">
         <span style="flex:1"></span>
+        <select id="wipeGen" class="cfg-in" style="max-width:110px" title="magic type to wipe">
+          <option value="gen1a">Gen1a</option><option value="gen2">Gen2</option>
+        </select>
+        <button id="wipeHfBtn" class="btn" title="Wipe the magic card on the antenna">&#9003; Wipe</button>
         <button id="clearHfBtn" class="btn">Clear all</button>
       </div>
 

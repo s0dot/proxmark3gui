@@ -822,6 +822,7 @@ function wireCopy() {
   loadFobs();
   renderFobs();
   $("#readFobBtn").addEventListener("click", captureRead);
+  $("#wipeT5Btn").addEventListener("click", wipeT5577);
   $("#clearFobsBtn").addEventListener("click", () => {
     if (state.fobs.length && !confirm("Forget all saved fobs?")) return;
     state.fobs = [];
@@ -956,6 +957,7 @@ function wireHfCopy() {
   loadHf();
   renderHf();
   $("#readHfBtn").addEventListener("click", hfReadDump);
+  $("#wipeHfBtn").addEventListener("click", wipeHf);
   $("#clearHfBtn").addEventListener("click", () => {
     if (state.hfCards.length && !confirm("Forget all dumped cards? (the dump files on disk are kept)")) return;
     state.hfCards = [];
@@ -1062,8 +1064,14 @@ function renderHf() {
       const magicSel =
         c.id === "mfc"
           ? `<select class="magic-sel" title="target magic type">` +
-            `<option value="gen1a"${c.magic === "gen1a" ? " selected" : ""}>Gen1a (cload)</option>` +
-            `<option value="gen2"${c.magic === "gen2" ? " selected" : ""}>Gen2/CUID (restore)</option></select>`
+            ["gen1a:Gen1a (cload)", "gen2:Gen2/CUID (restore)", "gen3:Gen3 (restore+gen3uid)", "gen4:Gen4/UMC (gload)"]
+              .map((o) => {
+                const i = o.indexOf(":");
+                const v = o.slice(0, i);
+                return `<option value="${v}"${c.magic === v ? " selected" : ""}>${o.slice(i + 1)}</option>`;
+              })
+              .join("") +
+            `</select>`
           : "";
       return (
         `<div class="fob" data-slot="${c.slot}">` +
@@ -1079,25 +1087,52 @@ function renderHf() {
     .join("");
 }
 
-function writeHf(c, cardEl) {
+function runSeq(cmds, done) {
+  const next = (i) => {
+    if (i >= cmds.length) return done();
+    runCmd(cmds[i], { onDone: () => next(i + 1) });
+  };
+  next(0);
+}
+
+async function dumpBytes(base) {
+  try {
+    const r = await (await fetch("/api/filesize?name=" + encodeURIComponent(base))).json();
+    return r.bytes || 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+async function writeHf(c, cardEl) {
   if (!c) return;
   if (!state.connected) return appendConsole("[!] Connect first.", "sys");
   const spec = hfById(c.id);
-  let cmd;
+  let cmds;
   if (c.id === "mfc") {
-    cmd =
-      c.magic === "gen2"
-        ? `hf mf restore ${/4K/i.test(c.size || "") ? "--4k" : "--1k"} -f ${c.dumpbase} -k ${c.dumpbase.replace(/-dump$/, "-key")} --force`
-        : `hf mf cload -f ${c.dumpbase}`;
+    // pick the size flag from the ACTUAL dump size (1152 = 1K+ / 18-sector, etc.)
+    const bytes = await dumpBytes(c.dumpbase);
+    const flag =
+      { 320: "--mini", 1024: "--1k", 1152: "--1k+", 2048: "--2k", 4096: "--4k" }[bytes] ||
+      (/4K/i.test(c.size || "") ? "--4k" : "--1k");
+    const gflag = flag; // gload / cload support --1k+
+    const rflag = flag.replace("+", ""); // restore has no --1k+
+    const kf = c.dumpbase.replace(/-dump$/, "-key");
+    const uid = (c.uid || "").replace(/\s/g, "");
+    const restore = `hf mf restore ${rflag} -f ${c.dumpbase} -k ${kf} --force`;
+    cmds =
+      c.magic === "gen4" ? [`hf mf gload ${gflag} -f ${c.dumpbase}`]
+      : c.magic === "gen3" ? [restore, `hf mf gen3uid --uid ${uid}`]
+      : c.magic === "gen2" ? [restore]
+      : [`hf mf cload ${gflag} -f ${c.dumpbase}`]; // gen1a
   } else {
-    cmd = spec.write.replace("{dump}", c.dumpbase);
+    cmds = [spec.write.replace("{dump}", c.dumpbase)];
   }
-  if (!confirm(`Write ${c.label} (${c.typeName}) to the MAGIC / writable card on the antenna?\n\n${cmd}\n\nA normal blank won't work — the target must be a magic / writable card.`))
+  if (!confirm(`Write ${c.label} (${c.typeName}) to the MAGIC / writable card on the antenna?\n\n${cmds.join("\n")}\n\nA normal blank won't work — the target must be a magic / writable card.`))
     return;
-  runCmd(cmd, {
-    onDone: () => {
-      appendConsole("[=] Verifying — reading the target card back…", "sys");
-      runCmd(spec.identify, {
+  runSeq(cmds, () => {
+    appendConsole("[=] Verifying — reading the target card back…", "sys");
+    runCmd(spec.identify, {
         onDone: (vl) => {
           const vtext = vl.join("\n");
           const got = grab(vtext, spec.uidRe) || "";
@@ -1122,8 +1157,21 @@ function writeHf(c, cardEl) {
           );
         },
       });
-    },
   });
+}
+
+/* wipe a blank ------------------------------------------------------ */
+function wipeT5577() {
+  if (!state.connected) return appendConsole("[!] Connect first.", "sys");
+  if (!confirm("Wipe the T5577 on the antenna back to a blank default tag?")) return;
+  runCmd("lf t55xx wipe");
+}
+function wipeHf() {
+  if (!state.connected) return appendConsole("[!] Connect first.", "sys");
+  const gen = $("#wipeGen").value;
+  const cmd = gen === "gen2" ? "hf mf wipe --gen2" : "hf mf cwipe";
+  if (!confirm(`Wipe the ${gen === "gen2" ? "Gen2/CUID" : "Gen1a"} magic card on the antenna back to blank?\n\n${cmd}`)) return;
+  runCmd(cmd);
 }
 
 /* ------------------------------------------------------------------ *

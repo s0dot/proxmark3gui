@@ -237,6 +237,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(self._ports_payload())
             if path == "/api/status":
                 return self._json(STATE.snapshot())
+            if path == "/api/filesize":
+                return self._json({"bytes": self._dump_size(parse_qs(u.query).get("name", [""])[0])})
             if path == "/api/output":
                 return self._handle_output(qs)
             return self._static(path)
@@ -276,6 +278,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": str(e)}, 500)
 
     # endpoint impls ----------------------------------------------------- #
+    def _dump_size(self, base):
+        """Byte size of a dump .bin in the client's working dir (0 if unknown)."""
+        if not base or "/" in base or "\\" in base or ".." in base:
+            return 0
+        cpath = STATE.client_path or pm3.find_client()
+        cdir = os.path.dirname(cpath) if cpath else None
+        if not cdir:
+            return 0
+        p = os.path.join(cdir, base + ".bin")
+        try:
+            return os.path.getsize(p) if os.path.isfile(p) else 0
+        except OSError:
+            return 0
+
     def _ports_payload(self):
         found = pm3.find_client()
         rt = pm3.find_runtime_dir(found) if found else None

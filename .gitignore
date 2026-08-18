@@ -15,6 +15,14 @@ pm3gui/pm3client/.proxmark3/
 pm3gui/pm3client/tmp/
 **/.proxmark3/
 
+# Card dumps / keys written at runtime (personal data — never commit)
+**/hf-mf-*.bin
+**/hf-mf-*.json
+**/hf-mf-*.eml
+**/hf-iclass-*-dump.*
+**/hf-mfu-*-dump.*
+**/*-key.bin
+
 # Logs
 *.log
 

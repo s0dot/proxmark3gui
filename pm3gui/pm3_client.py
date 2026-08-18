@@ -567,6 +567,19 @@ def _hf_mf_restore(self, raw):
     ]
 
 
+def _hf_mf_gload(self, raw):
+    return ["[=] Loading dump to Gen4 UMC card (backdoor)...", "[+] Loaded 64 blocks", "[+] \x1b[32mDone!\x1b[0m"]
+
+
+def _hf_mf_gen3uid(self, raw):
+    uid = _arg(raw, "-u", "--uid") or "9A5C2EF1"
+    return [f"[=] Gen3 UID set to {uid}", "[+] \x1b[32mDone!\x1b[0m"]
+
+
+def _hf_mf_cwipe(self, raw):
+    return ["[=] Wiping magic Gen1a card to default (UID 00000000)...", "[+] \x1b[32mDone!\x1b[0m"]
+
+
 def _hf_mfu_dump(self, raw):
     return [
         "[=] Dumping Ultralight / NTAG memory...",
@@ -873,6 +886,10 @@ _DISPATCH = [
     ("hf mf csetuid", _hf_csetuid),
     ("hf mf cload", _hf_mf_cload),
     ("hf mf restore", _hf_mf_restore),
+    ("hf mf gload", _hf_mf_gload),
+    ("hf mf gen3uid", _hf_mf_gen3uid),
+    ("hf mf cwipe", _hf_mf_cwipe),
+    ("hf mf wipe", lambda s, r: ["[=] Wiping card to default...", "[+] \x1b[32mDone!\x1b[0m"]),
     ("hf iclass info", _hf_iclass_info),
     ("hf iclass dump", _hf_iclass_dump),
     ("hf iclass restore", _hf_iclass_restore),
