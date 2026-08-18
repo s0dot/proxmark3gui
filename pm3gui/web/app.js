@@ -20,6 +20,8 @@ const state = {
   hfSeq: 0,
 };
 let pollTimer = null;
+let pollActive = false;
+let pollQueued = false;
 
 /* ------------------------------------------------------------------ *
  *  Boot
@@ -279,11 +281,16 @@ function schedulePoll(delay) {
 }
 function wakePoll() {
   state.lastHadEvents = true; // bias next poll toward "active"
-  schedulePoll(0);
+  if (pollActive) pollQueued = true; // a poll is running; don't start a 2nd
+  else schedulePoll(0);
 }
 async function doPoll() {
-  const active = state.busy || state.lastHadEvents;
-  const wait = active ? 20 : 0;
+  if (pollActive) {
+    pollQueued = true; // never run two polls concurrently (would double events)
+    return;
+  }
+  pollActive = true;
+  const wait = state.busy || state.lastHadEvents ? 20 : 0;
   try {
     const res = await fetch(`/api/output?since=${state.lastSeq}&wait=${wait}`);
     const data = await res.json();
@@ -292,14 +299,20 @@ async function doPoll() {
     evs.forEach(handleEvent);
     if (typeof data.last === "number") state.lastSeq = data.last;
     if (data.status) applyStatus(data.status);
-    if (state.connected) {
-      schedulePoll(state.busy || state.lastHadEvents ? 0 : 1200);
-    } else {
-      clearTimeout(pollTimer); // idle on disconnect so the page can settle
-      pollTimer = null;
-    }
   } catch (e) {
+    pollActive = false;
     if (state.connected) schedulePoll(1500); // server momentarily unavailable
+    return;
+  }
+  pollActive = false;
+  if (!state.connected) {
+    clearTimeout(pollTimer); // idle on disconnect so the page can settle
+    pollTimer = null;
+  } else if (pollQueued) {
+    pollQueued = false;
+    schedulePoll(0);
+  } else {
+    schedulePoll(state.busy || state.lastHadEvents ? 0 : 1200);
   }
 }
 
@@ -1117,7 +1130,7 @@ async function writeHf(c, cardEl) {
       (/4K/i.test(c.size || "") ? "--4k" : "--1k");
     const gflag = flag; // gload / cload support --1k+
     const rflag = flag.replace("+", ""); // restore has no --1k+
-    const kf = c.dumpbase.replace(/-dump$/, "-key");
+    const kf = c.dumpbase.replace("-dump", "-key");
     const uid = (c.uid || "").replace(/\s/g, "");
     const restore = `hf mf restore ${rflag} -f ${c.dumpbase} -k ${kf} --force`;
     cmds =

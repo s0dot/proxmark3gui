@@ -279,18 +279,23 @@ class Handler(BaseHTTPRequestHandler):
 
     # endpoint impls ----------------------------------------------------- #
     def _dump_size(self, base):
-        """Byte size of a dump .bin in the client's working dir (0 if unknown)."""
-        if not base or "/" in base or "\\" in base or ".." in base:
+        """Byte size of a dump .bin (0 if unknown). `base` may be a full path or bare name."""
+        if not base or ".." in base:
             return 0
+        name = os.path.basename(base.replace("\\", "/"))
+        if not re.match(r"^(hf|lf)-[\w.-]+$", name):  # only dump-named files
+            return 0
+        cands = [base + ".bin"]
         cpath = STATE.client_path or pm3.find_client()
-        cdir = os.path.dirname(cpath) if cpath else None
-        if not cdir:
-            return 0
-        p = os.path.join(cdir, base + ".bin")
-        try:
-            return os.path.getsize(p) if os.path.isfile(p) else 0
-        except OSError:
-            return 0
+        if cpath:
+            cands.append(os.path.join(os.path.dirname(cpath), name + ".bin"))
+        for p in cands:
+            try:
+                if os.path.isfile(p):
+                    return os.path.getsize(p)
+            except OSError:
+                pass
+        return 0
 
     def _ports_payload(self):
         found = pm3.find_client()
