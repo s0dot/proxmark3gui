@@ -1256,17 +1256,21 @@ async function writeHf(c, cardEl) {
 async function detectMagic(item) {
   if (!state.connected) return appendConsole("[!] Connect first.", "sys");
   appendConsole("[=] Detecting the target card's magic type…", "sys");
-  const res = await postJSON("/api/op", { op: "probe-magic", params: {} });
-  const R = res.result || {};
-  if (res.aborted || !res.ok) return appendConsole("[!] " + (res.error || "no card detected"), "sys");
-  if (!R.magic_gen) {
-    (res.warnings || []).forEach((w) => appendConsole("[?] " + w, "sys"));
-    return appendConsole(`[?] ${R.magic || "No magic capability"} — UID ${R.uid || "?"}. This may be a normal (non-writable) card.`, "sys");
+  try {
+    const res = await postJSON("/api/op", { op: "probe-magic", params: {} });
+    const R = res.result || {};
+    if (res.aborted || !res.ok) return appendConsole("[!] " + (res.error || "no card detected"), "sys");
+    if (!R.magic_gen) {
+      (res.warnings || []).forEach((w) => appendConsole("[?] " + w, "sys"));
+      return appendConsole(`[?] ${R.magic || "No magic capability"} — UID ${R.uid || "?"}. This may be a normal (non-writable) card.`, "sys");
+    }
+    item.magic = R.magic_gen;
+    saveHf();
+    renderHf();
+    appendConsole(`[+] Detected ${R.magic} → set target type to "${R.magic_gen}".`, "sys");
+  } catch (e) {
+    appendConsole("[!] Detect failed: " + e.message, "sys");
   }
-  item.magic = R.magic_gen;
-  saveHf();
-  renderHf();
-  appendConsole(`[+] Detected ${R.magic} → set target type to "${R.magic_gen}".`, "sys");
 }
 
 /* Deep verify: read the target back and compare every block to the original */
@@ -1274,20 +1278,24 @@ async function deepVerify(item, cardEl) {
   if (!state.connected) return appendConsole("[!] Connect first.", "sys");
   if (item.id !== "mfc") return appendConsole("[!] Deep verify is for MIFARE Classic targets.", "sys");
   appendConsole("[=] Deep verify — reading the target back to compare every block…", "sys");
-  const res = await postJSON("/api/op", { op: "deep-verify", params: { dump_base: item.dumpbase } });
-  const R = res.result || {};
-  const vEl = cardEl && cardEl.querySelector(".fob-verify");
-  if (vEl)
-    renderVerify(vEl, {
-      label: `${item.label} — deep verify`,
-      expect: `${R.blocks || "?"} blocks == original`,
-      got: res.ok ? "all blocks match" : R.readable ? `${(R.diff_blocks || []).length} block(s) differ` : "couldn't read the target back",
-      status: res.ok ? "ok" : R.readable ? "mismatch" : "unverified",
-    });
-  appendConsole(
-    res.ok ? `[+] Deep verify passed — all ${R.blocks} blocks match the original.` : "[!] " + (res.error || "deep verify failed"),
-    "sys"
-  );
+  try {
+    const res = await postJSON("/api/op", { op: "deep-verify", params: { dump_base: item.dumpbase } });
+    const R = res.result || {};
+    const vEl = cardEl && cardEl.querySelector(".fob-verify");
+    if (vEl)
+      renderVerify(vEl, {
+        label: `${item.label} — deep verify`,
+        expect: `${R.blocks || "?"} blocks == original`,
+        got: res.ok ? "all blocks match" : R.readable ? `${(R.diff_blocks || []).length} block(s) differ` : "couldn't read the target back",
+        status: res.ok ? "ok" : R.readable ? "mismatch" : "unverified",
+      });
+    appendConsole(
+      res.ok ? `[+] Deep verify passed — all ${R.blocks} blocks match the original.` : "[!] " + (res.error || "deep verify failed"),
+      "sys"
+    );
+  } catch (e) {
+    appendConsole("[!] Deep verify failed: " + e.message, "sys");
+  }
 }
 
 /* Rescue: diagnose a stuck magic card (read-only; the op streams its findings) */
@@ -1295,8 +1303,12 @@ async function rescueMagic() {
   if (!state.connected) return appendConsole("[!] Connect first.", "sys");
   if (!confirm("Run the Rescue diagnostic on the card on the antenna?\n\nThis only READS every backdoor channel — it never writes — and reports which respond."))
     return;
-  const res = await postJSON("/api/op", { op: "rescue-magic", params: {} });
-  if (res.error && !res.result) appendConsole("[!] " + res.error, "sys");
+  try {
+    const res = await postJSON("/api/op", { op: "rescue-magic", params: {} });
+    if (res.error && !res.result) appendConsole("[!] " + res.error, "sys");
+  } catch (e) {
+    appendConsole("[!] Rescue failed: " + e.message, "sys");
+  }
 }
 
 /* Fob/card library export + import (merges on import; no data loss) --------- */

@@ -79,6 +79,20 @@ class TestHappyPath(unittest.TestCase):
         clone(r, execute=True)
         self.assertTrue(r.cmds[-1].startswith("hf mf info"))
 
+    def test_20_23_card_uses_gdm_channel(self):
+        # a 20/23-knock card (byte2==85) must verify the knock over --gdm and
+        # program the UID with -t 2, not the hardcoded gen1a/40-43 path
+        table = full_table()
+        table["hf mf gdmcfg"] = G.GDMCFG_8500_2023
+        table["hf mf gdmcfg --gdm"] = G.GDMCFG_7AFF_2023
+        r = FakeRunner(table, info_seq=[G.INFO_GDM_BLANK, G.INFO_CLONE_OK])
+        res = clone(r, execute=True)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["result"]["wake"], "2")
+        self.assertIn("hf mf gdmcfg --gdm", r.cmds)
+        self.assertTrue(any("-t 2" in c for c in r.cmds))
+        self.assertFalse(any(c.startswith("hf mf gdmcfg --gen1a") for c in r.cmds))
+
 
 class TestDryRun(unittest.TestCase):
     def test_dry_run_writes_nothing(self):

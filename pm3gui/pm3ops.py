@@ -115,14 +115,17 @@ def clone_gdm_uscuid(run, *, dump_base, target_uid, dump_bytes,
     res["current_uid"] = info["uid"]
     ctx.say(f"[+] GDM / USCUID card present — current UID {info['uid']}")
 
-    # ---- CHECK 2: read config (magic-auth, then gen1a fallback) ----
+    # ---- CHECK 2: read config (magic-auth, then either knock style) ----
     via = "magic-auth"
     cfg = P.parse_gdm_config(ctx.run("hf mf gdmcfg"))
     if not cfg:
         via = "gen1a"
         cfg = P.parse_gdm_config(ctx.run("hf mf gdmcfg --gen1a"))
     if not cfg:
-        return _fail(r, "couldn't read the GDM config on either channel (magic-auth or gen1a). The card may be locked — nothing was written.")
+        via = "gdm"
+        cfg = P.parse_gdm_config(ctx.run("hf mf gdmcfg --gdm"))
+    if not cfg:
+        return _fail(r, "couldn't read the GDM config on any channel (magic-auth, gen1a or gdm). The card may be locked — nothing was written.")
     res["config"] = cfg["hex"]
     res["config_via"] = via
     ctx.say(f"[+] Config readable via {via}: {cfg['hex']}")
@@ -134,14 +137,16 @@ def clone_gdm_uscuid(run, *, dump_base, target_uid, dump_bytes,
         r["warnings"].append(f"magic-auth byte is {cfg['magic_auth']} (expected 5A) — recovery is limited if a write fails.")
 
     enable_cfg = "7AFF" + cfg["hex"][4:]        # only bytes 0-1 change → 7A FF
-    wake = "2" if cfg["wakeup_20_23"] else "4"  # script -t: knock style
+    wake = "2" if cfg["wakeup_20_23"] else "4"  # script -t: knock style (byte 2)
+    gate_cmd = "hf mf gdmcfg --gdm" if wake == "2" else "hf mf gdmcfg --gen1a"
     res["enable_cfg"] = enable_cfg
     res["wake"] = wake
+    res["gate_cmd"] = gate_cmd
     res["already_enabled"] = cfg["cfg_block_access"]
     res["plan"] = [
         "knock already enabled — skip config write" if cfg["cfg_block_access"]
         else f"enable knock:  hf mf gdmsetcfg -d {enable_cfg}",
-        "verify knock:  hf mf gdmcfg --gen1a  (must read 7AFF…)",
+        f"verify knock:  {gate_cmd}  (must read 7AFF…)",
         f"load data:     hf mf cload {cload_flag} -f {dump_base}",
         f"set UID (LAST): script run hf_mf_uscuid_prog -t {wake} -u {uid}",
         "verify:        hf mf info",
@@ -162,10 +167,11 @@ def clone_gdm_uscuid(run, *, dump_base, target_uid, dump_bytes,
         ctx.say("[=] Enabling 40/43 knock…")
         ctx.run(f"hf mf gdmsetcfg -d {enable_cfg}")
 
-    # 2 — CRITICAL GATE: confirm the knock took, over gen1a. Abort here = 0 damage.
-    chk = P.parse_gdm_config(ctx.run("hf mf gdmcfg --gen1a"))
+    # 2 — CRITICAL GATE: confirm the knock took, over the card's own knock style.
+    #     Abort here = nothing else written = zero damage.
+    chk = P.parse_gdm_config(ctx.run(gate_cmd))
     if not chk or not chk["hex"].startswith("7AFF"):
-        return _fail(r, f"knock did NOT enable (gdmcfg --gen1a → {chk['hex'] if chk else 'no read / error'}). "
+        return _fail(r, f"knock did NOT enable ({gate_cmd} → {chk['hex'] if chk else 'no read / error'}). "
                         "Stopped BEFORE touching data — re-seat the card flat on the antenna and try again.")
     ctx.say(f"[+] Knock confirmed — config now {chk['hex']}")
 

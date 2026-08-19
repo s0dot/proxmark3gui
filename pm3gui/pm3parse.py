@@ -60,7 +60,9 @@ def parse_hf_info(text: str) -> dict:
     m = re.search(r"Possible types?:\s*(.+?)\s*$", t, re.M)
     if m:
         out["type"] = m.group(1).strip()
-    m = re.search(r"Prng\W*\s*(\w+)", t)
+    # last word on the Prng line — handles both "Prng....... weak" and
+    # "Prng detection....... weak" (don't capture the word "detection")
+    m = re.search(r"Prng\b[^\n]*?(\w+)\s*$", t, re.M)
     if m:
         out["prng"] = m.group(1).lower()
     out["magic_gen"] = magic_gen_slug(out["magic"] or t)

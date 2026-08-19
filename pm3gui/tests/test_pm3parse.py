@@ -46,6 +46,11 @@ class TestHfInfo(unittest.TestCase):
         self.assertFalse(i["is_gdm"])
         self.assertEqual(P.norm_hex(i["uid"]), "9A5C2EF1")
 
+    def test_prng_word_both_wordings(self):
+        # "Prng....... weak" and "Prng detection....... weak" both -> "weak"
+        self.assertEqual(P.parse_hf_info(G.INFO_GDM_BLANK)["prng"], "weak")
+        self.assertEqual(P.parse_hf_info(G.INFO_NON_GDM)["prng"], "weak")
+
 
 class TestGdmConfig(unittest.TestCase):
     def test_factory_8500(self):

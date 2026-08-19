@@ -51,6 +51,10 @@ class AppState:
         self.runtime_dir = None
         self.cmd_seq = 0
         self.busy = False
+        # cmd_seqs dispatched but not yet completed (FIFO — the client processes
+        # stdin in order), so device output can be attributed to the right cmd.
+        self.pending = deque()
+        self.send_lock = threading.Lock()
 
     # event log ---------------------------------------------------------- #
     def add_event(self, kind, **data):
@@ -126,6 +130,7 @@ class AppState:
             self.mode = "offline"
             self.port = None
             self.busy = False
+            self.pending.clear()
         if client:
             try:
                 client.close()
@@ -155,11 +160,22 @@ class AppState:
             threading.Timer(0.2, self.disconnect).start()
             return s
 
-        client = self.client
-        client.send(cmd)
-        client.send(f"rem {pm3.SENTINEL_PREFIX}{s}")
+        self._send_cmd(cmd, s)
         self.add_event("status", **self.snapshot())
         return s
+
+    def _send_cmd(self, cmd, s):
+        """Send a command + its completion sentinel atomically, registering the
+        cmd_seq as pending first so device output can be attributed to it. The
+        lock keeps a concurrent command from interleaving on pm3 stdin (which
+        would scramble the FIFO attribution)."""
+        with self.send_lock:
+            client = self.client
+            with self.cv:
+                self.pending.append(s)
+            if client:
+                client.send(cmd)
+                client.send(f"rem {pm3.SENTINEL_PREFIX}{s}")
 
     def run_capture(self, cmd, timeout=120.0):
         """Run one command synchronously and return its ANSI-stripped device
@@ -177,9 +193,7 @@ class AppState:
             start = self.seq        # only events after this belong to this cmd
             self.busy = True
         self.add_event("output", text="pm3 --> " + cmd, stream="cmd")
-        client = self.client
-        client.send(cmd)
-        client.send(f"rem {pm3.SENTINEL_PREFIX}{s}")
+        self._send_cmd(cmd, s)
         self.add_event("status", **self.snapshot())
 
         deadline = time.time() + timeout
@@ -192,8 +206,8 @@ class AppState:
                     seen = e["seq"]
                     if e["kind"] == "done" and e.get("cmd_seq") == s:
                         return [strip_ansi(x) for x in lines]
-                    # capture only raw device output (no "cmd" echo, no "sys" op logs)
-                    if e["kind"] == "output" and not e.get("stream"):
+                    # capture only THIS command's device output (attributed by cmd_seq)
+                    if e["kind"] == "output" and e.get("cmd_seq") == s:
                         lines.append(e.get("text", ""))
                 remaining = deadline - time.time()
                 if remaining <= 0:
@@ -229,6 +243,7 @@ class AppState:
                 self.client = None
                 self.mode = "offline"
                 self.busy = False
+                self.pending.clear()
             if was:
                 self.add_event("output", text="[!] Session ended", stream="sys")
                 self.add_event("status", **self.snapshot())
@@ -236,12 +251,19 @@ class AppState:
 
         m = _SENTINEL_RE.search(strip_ansi(line))
         if m:
+            k = int(m.group(1))
             with self.cv:
                 self.busy = False
-            self.add_event("done", cmd_seq=int(m.group(1)))
+                if self.pending and self.pending[0] == k:
+                    self.pending.popleft()
+                elif k in self.pending:            # out-of-order safety net
+                    self.pending.remove(k)
+            self.add_event("done", cmd_seq=k)
             self.add_event("status", **self.snapshot())
             return
-        self.add_event("output", text=line)
+        with self.cv:
+            cur = self.pending[0] if self.pending else None
+        self.add_event("output", text=line, cmd_seq=cur)
 
 
 STATE = AppState()

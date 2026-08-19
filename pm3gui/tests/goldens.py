@@ -71,6 +71,17 @@ GDMCFG_PERSO_BAD = """\
 [+] 8500000000005A000000005A005A0008
 """
 
+# a USCUID card that uses the 20/23 knock (byte 2 == 85): factory (8500) and enabled (7AFF)
+GDMCFG_8500_2023 = """\
+[+] ------------------- GDM Gen4 Configuration -----------------------------------------
+[+] 8500850000005A00005A005A005A0008
+[+] ......85........................ Magic wakeup style GDM 20/23
+"""
+GDMCFG_7AFF_2023 = """\
+[+] ------------------- GDM Gen4 Configuration -----------------------------------------
+[+] 7AFF850000005A00005A005A005A0008
+"""
+
 # device error outputs
 AUTH_ERROR = "[#] Auth error"
 WUPC1_ERROR = "[#] wupC1 error"
