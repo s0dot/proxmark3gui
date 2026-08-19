@@ -47,6 +47,7 @@
 
   <nav class="sidebar">
     <button class="nav-item active" data-panel="dashboard"><span class="ni">&#9678;</span> Dashboard</button>
+    <button class="nav-item" data-panel="guide"><span class="ni">&#128214;</span> Guide</button>
     <button class="nav-item" data-panel="identify"><span class="ni">&#9906;</span> Identify</button>
     <button class="nav-item" data-panel="copy"><span class="ni">&#11014;</span> Copy Fob</button>
     <button class="nav-item" data-panel="hfcopy"><span class="ni">&#128179;</span> HF Copy</button>
@@ -98,6 +99,80 @@
       </div>
     </section>
 
+    <!-- GUIDE ----------------------------------------------------------- -->
+    <section id="panel-guide" class="panel">
+      <h1>Guide</h1>
+      <p class="lead">How to use this tool, step by step. New here? Start at the top.</p>
+
+      <div class="step">
+        <div class="step-h"><span class="step-n">1</span> Connect your Proxmark3</div>
+        <ol class="guide-list">
+          <li>Plug the Proxmark3 into USB.</li>
+          <li>Pick its <b>COM port</b> in the top bar and click <b>Connect</b>. No device handy? Choose the
+            demo port to explore safely — responses are simulated.</li>
+          <li>If Connect fails with a <b>missing-DLL</b> error, open <b>Settings</b> (gear icon) and set the
+            <b>Runtime folder</b> to your ProxSpace <code>...\mingw64\bin</code>.</li>
+        </ol>
+        <div class="btn-row"><button class="btn" data-goto="dashboard">Go to Dashboard &rarr;</button></div>
+      </div>
+
+      <div class="step">
+        <div class="step-h"><span class="step-n">2</span> Identify what you're holding</div>
+        <p class="guide-intro">Not sure what a card is? Put it on the antenna and run a scan — it reports
+          LF vs HF, the likely type, and the UID.</p>
+        <div class="btn-row"><button class="btn" data-goto="identify">Go to Identify &rarr;</button></div>
+      </div>
+
+      <div class="step">
+        <div class="step-h"><span class="step-n">3</span> Copy a 125&nbsp;kHz fob (LF)</div>
+        <p class="guide-intro">EM410x, HID, AWID, Indala and 20+ other low-frequency fobs onto a blank
+          <b>T5577</b> (the universal rewritable 125&nbsp;kHz chip).</p>
+        <ol class="guide-list">
+          <li><b>Read fob</b> — place the original on the antenna; it auto-detects the type and saves it as a
+            slot (FOB1, FOB2&hellip;).</li>
+          <li>Put a blank <b>T5577</b> on the antenna.</li>
+          <li>On the saved slot, click <b>Write to T5577</b>. It writes, reads back, and confirms it matches.</li>
+        </ol>
+        <div class="btn-row"><button class="btn" data-goto="copy">Go to Copy Fob &rarr;</button></div>
+      </div>
+
+      <div class="step">
+        <div class="step-h"><span class="step-n">4</span> Copy a 13.56&nbsp;MHz card (HF)</div>
+        <p class="guide-intro">MIFARE Classic, Ultralight/NTAG and iCLASS onto a <b>magic</b> card.</p>
+        <ol class="guide-list">
+          <li><b>Read &amp; dump</b> — reads the original, recovers keys if needed, and saves a dump slot.</li>
+          <li>Put your <b>magic / writable</b> target on the antenna.</li>
+          <li>Pick the target's <b>magic type</b> in the slot's dropdown, then <b>Write to magic</b> — it writes
+            and verifies the UID.</li>
+        </ol>
+        <div class="hint-line">&#128273; Choosing <b>Gen4 GDM / USCUID</b> runs a guided, safety-checked clone
+          (for the tricky 7-byte cards). It reads &amp; verifies the card's config first and only writes if
+          every check passes.</div>
+        <div class="btn-row"><button class="btn" data-goto="hfcopy">Go to HF Copy &rarr;</button></div>
+      </div>
+
+      <div class="step">
+        <div class="step-h"><span class="step-n">&#9432;</span> Magic cards — the 30-second version</div>
+        <p class="guide-intro">A normal blank's <b>UID is locked</b>, so you can't put a fob's identity on it.
+          A <b>magic card</b> lets you rewrite block&nbsp;0 / the UID:</p>
+        <ul class="guide-list">
+          <li><b>T5577</b> — the universal rewritable 125&nbsp;kHz (LF) chip.</li>
+          <li><b>Gen1a / Gen2</b> — the everyday MIFARE Classic magic cards (13.56&nbsp;MHz).</li>
+          <li><b>Gen3 / Gen4 GTU / GDM-USCUID</b> — fancier variants; the tool picks the right commands per type.</li>
+        </ul>
+      </div>
+
+      <div class="step">
+        <div class="step-h"><span class="step-n">&#9888;</span> Troubleshooting</div>
+        <ul class="guide-list">
+          <li><b>Missing DLL on Connect</b> &rarr; Settings &rarr; set the Runtime folder (<code>mingw64\bin</code>).</li>
+          <li><b>"needs a magic card"</b> &rarr; the target must be a magic/writable card; a plain blank won't take a new UID.</li>
+          <li><b>Keys not found / can't dump</b> &rarr; hardened or EV1/DESFire cards may not be copyable.</li>
+          <li><b>Anything odd</b> &rarr; the <b>Console</b> at the bottom shows every command and its raw output.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- IDENTIFY -------------------------------------------------------- -->
     <section id="panel-identify" class="panel">
       <h1>Identify</h1>
@@ -134,7 +209,10 @@
         <span class="muted">place a fob on the antenna &middot; auto-detects the type</span>
         <span style="flex:1"></span>
         <button id="wipeT5Btn" class="btn" title="Blank a T5577 tag">&#9003; Wipe T5577</button>
+        <button class="btn export-lib" title="Save all saved fobs + cards to a file">&#8681; Export</button>
+        <button class="btn import-lib" title="Load a saved library file (merges in)">&#8679; Import</button>
         <button id="clearFobsBtn" class="btn">Clear all</button>
+        <input type="file" id="libFile" accept="application/json,.json" hidden>
       </div>
 
       <div id="fobEmpty" class="fob-empty">
@@ -162,12 +240,20 @@
           <option value="gen1a">Gen1a</option><option value="gen2">Gen2</option>
         </select>
         <button id="wipeHfBtn" class="btn" title="Wipe the magic card on the antenna">&#9003; Wipe</button>
+        <button id="rescueBtn" class="btn" title="Diagnose a stuck magic card (read-only)">&#9855; Rescue</button>
+        <button class="btn export-lib" title="Save all saved fobs + cards to a file">&#8681; Export</button>
+        <button class="btn import-lib" title="Load a saved library file (merges in)">&#8679; Import</button>
         <button id="clearHfBtn" class="btn">Clear all</button>
       </div>
 
       <div class="hint-line" style="margin:0 0 16px">&#9888; HF copying needs a <b>magic / writable target</b>
         card — a normal blank's UID is locked. MIFARE Classic also needs its keys recovered; hardened/EV1
         and DESFire/secure cards may not be copyable.</div>
+
+      <div class="hint-line" style="margin:0 0 16px">&#128273; For a <b>Gen4 GDM / USCUID</b> target, pick that
+        magic type — the GUI runs a <b>guided, checked</b> clone (7-byte UIDs live in a hidden backdoor block,
+        so plain restore can't set them). It reads &amp; verifies the config first and only writes if every
+        check passes.</div>
 
       <div id="hfEmpty" class="fob-empty">No cards dumped yet — put a card on the antenna and hit <b>Read &amp; dump</b>.</div>
       <div id="hfList" class="fob-list"></div>

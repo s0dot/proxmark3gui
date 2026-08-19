@@ -55,15 +55,22 @@ async function syncStatus() {
 /* ------------------------------------------------------------------ *
  *  Navigation between panels
  * ------------------------------------------------------------------ */
+function goPanel(name) {
+  $$(".nav-item").forEach((x) => x.classList.remove("active"));
+  $$(".panel").forEach((x) => x.classList.remove("active"));
+  const nav = document.querySelector(`.nav-item[data-panel="${name}"]`);
+  const panel = document.getElementById("panel-" + name);
+  if (nav) nav.classList.add("active");
+  if (panel) panel.classList.add("active");
+  window.scrollTo(0, 0);
+}
 function wireNav() {
-  $$(".nav-item").forEach((b) =>
-    b.addEventListener("click", () => {
-      $$(".nav-item").forEach((x) => x.classList.remove("active"));
-      $$(".panel").forEach((x) => x.classList.remove("active"));
-      b.classList.add("active");
-      $("#panel-" + b.dataset.panel).classList.add("active");
-    })
-  );
+  $$(".nav-item").forEach((b) => b.addEventListener("click", () => goPanel(b.dataset.panel)));
+  // in-page "Go to X" buttons (e.g. from the Guide)
+  document.addEventListener("click", (e) => {
+    const g = e.target.closest("[data-goto]");
+    if (g) goPanel(g.dataset.goto);
+  });
 }
 
 /* ------------------------------------------------------------------ *
@@ -855,6 +862,13 @@ function wireCopy() {
       writeFob(state.fobs.find((f) => f.slot === slot), card);
     }
   });
+  // library export / import (buttons appear in both the Copy Fob and HF Copy bars)
+  $$(".export-lib").forEach((b) => b.addEventListener("click", exportLibrary));
+  $$(".import-lib").forEach((b) => b.addEventListener("click", () => $("#libFile").click()));
+  $("#libFile").addEventListener("change", (e) => {
+    if (e.target.files[0]) importLibrary(e.target.files[0]);
+    e.target.value = "";
+  });
 }
 
 function captureRead() {
@@ -989,8 +1003,13 @@ function wireHfCopy() {
       renderHf();
     } else if (e.target.closest(".fob-write")) {
       writeHf(item, card);
+    } else if (e.target.closest(".fob-detect")) {
+      detectMagic(item);
+    } else if (e.target.closest(".fob-deepverify")) {
+      deepVerify(item, card);
     }
   });
+  $("#rescueBtn").addEventListener("click", rescueMagic);
   $("#hfList").addEventListener("change", (e) => {
     if (e.target.classList.contains("magic-sel")) {
       const item = state.hfCards.find((c) => c.slot === +e.target.closest(".fob").dataset.slot);
@@ -1077,7 +1096,7 @@ function renderHf() {
       const magicSel =
         c.id === "mfc"
           ? `<select class="magic-sel" title="target magic type">` +
-            ["gen1a:Gen1a (cload)", "gen2:Gen2/CUID (restore)", "gen3:Gen3 (restore+gen3uid)", "gen4:Gen4 GTU (gload)", "gdm:Gen4 GDM/USCUID (cload --gdm)"]
+            ["gen1a:Gen1a (cload)", "gen2:Gen2/CUID (restore)", "gen3:Gen3 (restore+gen3uid)", "gen4:Gen4 GTU (gload)", "gdm:Gen4 GDM / USCUID (guided 7-byte)"]
               .map((o) => {
                 const i = o.indexOf(":");
                 const v = o.slice(0, i);
@@ -1093,7 +1112,10 @@ function renderHf() {
         `<button class="fob-del" title="Forget">&#10005;</button></div>` +
         `<div class="fob-fields"><div class="chip"><span class="k">${idlbl}</span><span class="v">${esc(c.uid || "?")}</span></div>` +
         `<div class="chip"><span class="k">dump</span><span class="v">${esc(c.dumpbase)}</span></div></div>` +
-        `<div class="fob-foot">${magicSel}<button class="btn btn-primary fob-write">&#9998; Write to magic</button>` +
+        `<div class="fob-foot">${magicSel}` +
+        (c.id === "mfc" ? `<button class="btn fob-detect" title="Auto-detect the target's magic type">&#128269; Detect</button>` : "") +
+        `<button class="btn btn-primary fob-write">&#9998; Write to magic</button>` +
+        (c.id === "mfc" ? `<button class="btn fob-deepverify" title="Read the target back and compare every block to the original">&#10003;&#10003; Deep verify</button>` : "") +
         `<span class="fob-verify"></span></div></div>`
       );
     })
@@ -1108,6 +1130,61 @@ function runSeq(cmds, done) {
   next(0);
 }
 
+/* ------------------------------------------------------------------ *
+ *  Gen4 GDM / USCUID clone — thin client over the tested server op.
+ *  These cards serve their 7-byte UID from a HIDDEN backdoor block, not
+ *  normal block 0, so cload/restore alone can't set it. ALL the checks,
+ *  parsing, safety gating and the verified write order (enable knock →
+ *  verify it took → cload → UID script LAST → verify) now live server-side
+ *  in pm3ops.clone_gdm_uscuid, unit-tested against real transcripts. Here we
+ *  just run the read-only checks (dry run), confirm the plan, then execute.
+ *  Progress streams to the console from the server as it runs.
+ * ------------------------------------------------------------------ */
+async function uscuidClone(card, cardEl) {
+  if (state.uscuidBusy) return appendConsole("[!] A GDM clone is already running.", "sys");
+  state.uscuidBusy = true;
+  const setV = (v) => renderVerify(cardEl.querySelector(".fob-verify"), v);
+  const params = { dump_base: card.dumpbase, target_uid: card.uid };
+  try {
+    // Phase 1 — read-only pre-flight checks (writes nothing)
+    appendConsole("[=] GDM / USCUID: running pre-flight checks…", "sys");
+    const dry = await postJSON("/api/op", { op: "clone-gdm-uscuid", params: { ...params, execute: false } });
+    if (dry.error && !dry.result) return appendConsole("[!] " + dry.error, "sys");
+    if (dry.aborted || !dry.ok) {
+      const why = (dry.error || "unknown").replace(/\.\s*$/, "");
+      return appendConsole("[!] Pre-flight failed — " + why + ". Nothing was written.", "sys");
+    }
+
+    const R = dry.result || {};
+    (dry.warnings || []).forEach((w) => appendConsole("[?] " + w, "sys"));
+    const plan = (R.plan || []).map((p, i) => `${i + 1}. ${p}`).join("\n");
+    if (!confirm(
+      "Gen4 GDM / USCUID clone — all pre-flight checks passed.\n\n" +
+      `Target UID : ${R.target_uid}\n` +
+      `Config     : ${R.config}  (via ${R.config_via})\n` +
+      `Dump       : ${card.dumpbase}  (${R.dump_bytes} bytes → ${R.cload_flag})\n\n` +
+      "Plan:\n" + plan + "\n\n" +
+      "The UID script runs LAST; cload never runs after it. Proceed?"
+    )) return appendConsole("[=] Cancelled — nothing was written.", "sys");
+
+    // Phase 2 — execute (server runs the verified-safe write sequence)
+    const ex = await postJSON("/api/op", { op: "clone-gdm-uscuid", params: { ...params, execute: true } });
+    if (ex.error && !ex.result) return appendConsole("[!] " + ex.error, "sys");
+    const X = ex.result || {};
+    (ex.warnings || []).forEach((w) => appendConsole("[?] " + w, "sys"));
+    setV({
+      label: `${card.label} → ${card.typeName}`,
+      expect: `UID ${card.uid}`,
+      got: `UID ${X.verified_uid || "(none)"}`,
+      status: ex.ok ? "ok" : ex.aborted ? "unverified" : "mismatch",
+    });
+  } catch (e) {
+    appendConsole("[!] clone error: " + e.message, "sys");
+  } finally {
+    state.uscuidBusy = false;
+  }
+}
+
 async function dumpBytes(base) {
   try {
     const r = await (await fetch("/api/filesize?name=" + encodeURIComponent(base))).json();
@@ -1120,6 +1197,8 @@ async function dumpBytes(base) {
 async function writeHf(c, cardEl) {
   if (!c) return;
   if (!state.connected) return appendConsole("[!] Connect first.", "sys");
+  // Gen4 GDM / USCUID needs the guided, safety-checked flow (hidden backdoor UID).
+  if (c.id === "mfc" && c.magic === "gdm") return uscuidClone(c, cardEl);
   const spec = hfById(c.id);
   let cmds;
   if (c.id === "mfc") {
@@ -1135,10 +1214,9 @@ async function writeHf(c, cardEl) {
     const restore = `hf mf restore ${rflag} -f ${c.dumpbase} -k ${kf} --force`;
     cmds =
       c.magic === "gen4" ? [`hf mf gload ${gflag} -f ${c.dumpbase}`]
-      : c.magic === "gdm" ? [`hf mf cload --gdm ${gflag} -f ${c.dumpbase}`]
       : c.magic === "gen3" ? [restore, `hf mf gen3uid --uid ${uid}`]
       : c.magic === "gen2" ? [restore]
-      : [`hf mf cload ${gflag} -f ${c.dumpbase}`]; // gen1a
+      : [`hf mf cload ${gflag} -f ${c.dumpbase}`]; // gen1a  (gdm handled by uscuidClone above)
   } else {
     cmds = [spec.write.replace("{dump}", c.dumpbase)];
   }
@@ -1172,6 +1250,111 @@ async function writeHf(c, cardEl) {
         },
       });
   });
+}
+
+/* Auto-detect the target's magic type and set the slot's dropdown -------- */
+async function detectMagic(item) {
+  if (!state.connected) return appendConsole("[!] Connect first.", "sys");
+  appendConsole("[=] Detecting the target card's magic type…", "sys");
+  const res = await postJSON("/api/op", { op: "probe-magic", params: {} });
+  const R = res.result || {};
+  if (res.aborted || !res.ok) return appendConsole("[!] " + (res.error || "no card detected"), "sys");
+  if (!R.magic_gen) {
+    (res.warnings || []).forEach((w) => appendConsole("[?] " + w, "sys"));
+    return appendConsole(`[?] ${R.magic || "No magic capability"} — UID ${R.uid || "?"}. This may be a normal (non-writable) card.`, "sys");
+  }
+  item.magic = R.magic_gen;
+  saveHf();
+  renderHf();
+  appendConsole(`[+] Detected ${R.magic} → set target type to "${R.magic_gen}".`, "sys");
+}
+
+/* Deep verify: read the target back and compare every block to the original */
+async function deepVerify(item, cardEl) {
+  if (!state.connected) return appendConsole("[!] Connect first.", "sys");
+  if (item.id !== "mfc") return appendConsole("[!] Deep verify is for MIFARE Classic targets.", "sys");
+  appendConsole("[=] Deep verify — reading the target back to compare every block…", "sys");
+  const res = await postJSON("/api/op", { op: "deep-verify", params: { dump_base: item.dumpbase } });
+  const R = res.result || {};
+  const vEl = cardEl && cardEl.querySelector(".fob-verify");
+  if (vEl)
+    renderVerify(vEl, {
+      label: `${item.label} — deep verify`,
+      expect: `${R.blocks || "?"} blocks == original`,
+      got: res.ok ? "all blocks match" : R.readable ? `${(R.diff_blocks || []).length} block(s) differ` : "couldn't read the target back",
+      status: res.ok ? "ok" : R.readable ? "mismatch" : "unverified",
+    });
+  appendConsole(
+    res.ok ? `[+] Deep verify passed — all ${R.blocks} blocks match the original.` : "[!] " + (res.error || "deep verify failed"),
+    "sys"
+  );
+}
+
+/* Rescue: diagnose a stuck magic card (read-only; the op streams its findings) */
+async function rescueMagic() {
+  if (!state.connected) return appendConsole("[!] Connect first.", "sys");
+  if (!confirm("Run the Rescue diagnostic on the card on the antenna?\n\nThis only READS every backdoor channel — it never writes — and reports which respond."))
+    return;
+  const res = await postJSON("/api/op", { op: "rescue-magic", params: {} });
+  if (res.error && !res.result) appendConsole("[!] " + res.error, "sys");
+}
+
+/* Fob/card library export + import (merges on import; no data loss) --------- */
+function safeParse(s) {
+  try {
+    return JSON.parse(s || "{}");
+  } catch (e) {
+    return {};
+  }
+}
+function exportLibrary() {
+  const data = {
+    app: "pm3gui",
+    version: 1,
+    fobs: safeParse(localStorage.getItem("pm3.fobs")),
+    hfcards: safeParse(localStorage.getItem("pm3.hfcards")),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "pm3gui-library.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  appendConsole("[+] Library exported to pm3gui-library.json (your Downloads folder).", "sys");
+}
+function importLibrary(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    let d;
+    try {
+      d = JSON.parse(rd.result);
+    } catch (e) {
+      return appendConsole("[!] Import failed — not a valid library file.", "sys");
+    }
+    let n = 0;
+    if (d.fobs && Array.isArray(d.fobs.fobs)) {
+      d.fobs.fobs.forEach((f) => {
+        state.fobSeq += 1;
+        state.fobs.push({ ...f, slot: state.fobSeq, label: "FOB" + state.fobSeq });
+        n++;
+      });
+      saveFobs();
+      renderFobs();
+    }
+    if (d.hfcards && Array.isArray(d.hfcards.cards)) {
+      d.hfcards.cards.forEach((c) => {
+        state.hfSeq += 1;
+        state.hfCards.push({ ...c, slot: state.hfSeq, label: "CARD" + state.hfSeq });
+        n++;
+      });
+      saveHf();
+      renderHf();
+    }
+    appendConsole(`[+] Imported ${n} saved item(s) from ${file.name}.`, "sys");
+  };
+  rd.readAsText(file);
 }
 
 /* wipe a blank ------------------------------------------------------ */
