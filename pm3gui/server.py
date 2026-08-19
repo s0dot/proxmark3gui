@@ -24,6 +24,7 @@ from urllib.parse import urlparse, parse_qs
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ports as ports_mod          # noqa: E402
 import pm3_client as pm3           # noqa: E402
+import pm3ops                      # noqa: E402
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
@@ -160,6 +161,65 @@ class AppState:
         self.add_event("status", **self.snapshot())
         return s
 
+    def run_capture(self, cmd, timeout=120.0):
+        """Run one command synchronously and return its ANSI-stripped device
+        output lines. Used by server-side operations (pm3ops). Emits to the
+        console stream exactly like dispatch(), so the browser still sees live
+        progress while an op runs."""
+        cmd = (cmd or "").strip()
+        if not cmd:
+            return []
+        with self.cv:
+            if not self.client or not self.connected:
+                raise RuntimeError("not connected")
+            self.cmd_seq += 1
+            s = self.cmd_seq
+            start = self.seq        # only events after this belong to this cmd
+            self.busy = True
+        self.add_event("output", text="pm3 --> " + cmd, stream="cmd")
+        client = self.client
+        client.send(cmd)
+        client.send(f"rem {pm3.SENTINEL_PREFIX}{s}")
+        self.add_event("status", **self.snapshot())
+
+        deadline = time.time() + timeout
+        lines, seen = [], start
+        with self.cv:
+            while True:
+                for e in self.events:
+                    if e["seq"] <= seen:
+                        continue
+                    seen = e["seq"]
+                    if e["kind"] == "done" and e.get("cmd_seq") == s:
+                        return [strip_ansi(x) for x in lines]
+                    # capture only raw device output (no "cmd" echo, no "sys" op logs)
+                    if e["kind"] == "output" and not e.get("stream"):
+                        lines.append(e.get("text", ""))
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    return [strip_ansi(x) for x in lines]   # timed out; return what we have
+                self.cv.wait(timeout=remaining)
+
+    def run_op(self, op, params):
+        """Execute a named pm3ops operation, streaming progress to the console
+        and returning its structured result envelope."""
+        fn = pm3ops.OPS.get(op)
+        if not fn:
+            return {"op": op, "ok": False, "aborted": True, "error": f"unknown op: {op}", "steps": []}
+        with self.cv:
+            if not self.connected:
+                return {"op": op, "ok": False, "aborted": True, "error": "not connected", "steps": []}
+        run = self.run_capture
+        log = lambda msg: self.add_event("output", text=msg, stream="sys")
+        try:
+            return fn(run, log, params, _OpIO())
+        except Exception as e:   # never crash the op layer
+            return {"op": op, "ok": False, "aborted": True, "error": str(e), "steps": []}
+        finally:
+            with self.cv:
+                self.busy = False
+            self.add_event("status", **self.snapshot())
+
     # client reader callback -------------------------------------------- #
     def _on_line(self, line):
         if line is None:
@@ -185,6 +245,47 @@ class AppState:
 
 
 STATE = AppState()
+
+
+# --------------------------------------------------------------------------- #
+# Dump-file access (shared by /api/filesize and the ops layer)
+# --------------------------------------------------------------------------- #
+def resolve_dump_path(base):
+    """Full path to a dump .bin — `base` may be a full path or a bare dump name.
+    Returns None on a bad/non-dump name (guards path traversal)."""
+    if not base or ".." in base:
+        return None
+    name = os.path.basename(base.replace("\\", "/"))
+    if not re.match(r"^(hf|lf)-[\w.-]+$", name):
+        return None
+    cands = [base + ".bin"]
+    cpath = STATE.client_path or pm3.find_client()
+    if cpath:
+        cands.append(os.path.join(os.path.dirname(cpath), name + ".bin"))
+    for p in cands:
+        try:
+            if os.path.isfile(p):
+                return p
+        except OSError:
+            pass
+    return None
+
+
+def read_dump_bytes(base):
+    p = resolve_dump_path(base)
+    if not p:
+        return None
+    try:
+        with open(p, "rb") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+class _OpIO:
+    """File access handed to ops (kept off the pure ops so they stay testable)."""
+    def read_dump(self, base):
+        return read_dump_bytes(base)
 
 
 # --------------------------------------------------------------------------- #
@@ -264,6 +365,13 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/command":
                 s = STATE.dispatch(body.get("cmd", ""))
                 return self._json({"ok": True, "cmd_seq": s, "status": STATE.snapshot()})
+            if u.path == "/api/op":
+                op = body.get("op", "")
+                params = dict(body.get("params") or {})
+                # resolve the dump's on-disk size server-side (the op needs it)
+                if params.get("dump_base"):
+                    params.setdefault("dump_bytes", self._dump_size(params["dump_base"]))
+                return self._json(STATE.run_op(op, params))
             if u.path == "/api/launch/chameleon":
                 exe = pm3.find_chameleon_gui()
                 if not exe:
@@ -280,22 +388,11 @@ class Handler(BaseHTTPRequestHandler):
     # endpoint impls ----------------------------------------------------- #
     def _dump_size(self, base):
         """Byte size of a dump .bin (0 if unknown). `base` may be a full path or bare name."""
-        if not base or ".." in base:
+        p = resolve_dump_path(base)
+        try:
+            return os.path.getsize(p) if p else 0
+        except OSError:
             return 0
-        name = os.path.basename(base.replace("\\", "/"))
-        if not re.match(r"^(hf|lf)-[\w.-]+$", name):  # only dump-named files
-            return 0
-        cands = [base + ".bin"]
-        cpath = STATE.client_path or pm3.find_client()
-        if cpath:
-            cands.append(os.path.join(os.path.dirname(cpath), name + ".bin"))
-        for p in cands:
-            try:
-                if os.path.isfile(p):
-                    return os.path.getsize(p)
-            except OSError:
-                pass
-        return 0
 
     def _ports_payload(self):
         found = pm3.find_client()
@@ -374,6 +471,19 @@ def _suppress_windows_error_dialogs():
         pass
 
 
+def _already_serving(host, port):
+    """True if an instance of *this* GUI is already serving on host:port.
+    Lets the pinned launcher be clicked repeatedly without spawning duplicates
+    — it just re-opens the browser to the running instance."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/api/status", timeout=0.6) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        return isinstance(data, dict) and "mode" in data and "connected" in data
+    except Exception:
+        return False
+
+
 def main():
     _suppress_windows_error_dialogs()
     ap = argparse.ArgumentParser(description="Proxmark3 GUI web server")
@@ -381,6 +491,11 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args()
+
+    # single-instance: if the GUI is already up, just open the browser to it
+    if not args.no_browser and _already_serving(args.host, args.port):
+        webbrowser.open(f"http://{args.host}:{args.port}/")
+        return
 
     httpd = None
     port = args.port
