@@ -22,11 +22,14 @@ const state = {
 let pollTimer = null;
 let pollActive = false;
 let pollQueued = false;
+let lastConnState;          // for connection-change toasts
+let consoleFilterQ = "";    // active console filter text
 
 /* ------------------------------------------------------------------ *
  *  Boot
  * ------------------------------------------------------------------ */
 window.addEventListener("DOMContentLoaded", () => {
+  applyTheme(localStorage.getItem("pm3.theme") === "light" ? "light" : "dark");
   wireNav();
   wireConsole();
   wireConnect();
@@ -37,9 +40,48 @@ window.addEventListener("DOMContentLoaded", () => {
   wireLaunchers();
   wireCopy();
   wireHfCopy();
+  $("#themeBtn").addEventListener("click", toggleTheme);
   loadPorts();
   syncStatus(); // resume if the server already has a live session (e.g. after refresh)
+  updateStats();
 });
+
+/* ------------------------------------------------------------------ *
+ *  Theme
+ * ------------------------------------------------------------------ */
+function applyTheme(t) {
+  const light = t === "light";
+  document.documentElement.setAttribute("data-theme", light ? "light" : "dark");
+  const btn = $("#themeBtn");
+  if (btn) btn.innerHTML = light ? "&#9788;" : "&#9790;"; // sun in light, moon in dark
+  localStorage.setItem("pm3.theme", light ? "light" : "dark");
+}
+function toggleTheme() {
+  applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light");
+}
+
+/* ------------------------------------------------------------------ *
+ *  Toasts + dashboard stats
+ * ------------------------------------------------------------------ */
+function toast(msg, type = "", ms = 3800) {
+  const box = $("#toasts");
+  if (!box) return;
+  const el = document.createElement("div");
+  el.className = "toast" + (type ? " " + type : "");
+  const icon = { ok: "&#10004;", err: "&#10008;", warn: "&#9888;" }[type] || "&#8505;";
+  el.innerHTML = `<span class="ti">${icon}</span><span>${esc(msg)}</span>`;
+  box.appendChild(el);
+  while (box.children.length > 4) box.removeChild(box.firstChild);
+  const kill = () => { el.classList.add("out"); setTimeout(() => el.remove(), 260); };
+  const timer = setTimeout(kill, ms);
+  el.addEventListener("click", () => { clearTimeout(timer); kill(); });
+}
+function updateStats() {
+  const set = (id, v) => { const e = $(id); if (e) e.textContent = v; };
+  set("#statFobs", state.fobs.length);
+  set("#statCards", state.hfCards.length);
+  set("#statMode", state.connected ? state.mode : "offline");
+}
 
 async function syncStatus() {
   try {
@@ -275,6 +317,11 @@ function applyStatus(st) {
     state.busy = !!st.busy;
     $("#busyDot").classList.toggle("hidden", !st.busy);
   }
+  updateStats();
+  if (typeof lastConnState === "boolean" && lastConnState !== state.connected)
+    toast(state.connected ? `Connected · ${st.port || state.mode}` : "Disconnected",
+          state.connected ? "ok" : "warn");
+  lastConnState = state.connected;
 }
 
 /* ------------------------------------------------------------------ *
@@ -342,6 +389,12 @@ function handleEvent(ev) {
  * ------------------------------------------------------------------ */
 function wireConsole() {
   $("#clearConsole").addEventListener("click", () => ($("#consoleBody").innerHTML = ""));
+  $("#copyConsole").addEventListener("click", copyConsole);
+  $("#downloadConsole").addEventListener("click", downloadConsole);
+  $("#consoleFilter").addEventListener("input", (e) => {
+    consoleFilterQ = e.target.value.toLowerCase();
+    filterConsole();
+  });
 
   const form = $("#cmdForm");
   const input = $("#cmdInput");
@@ -368,6 +421,61 @@ function wireConsole() {
       e.preventDefault();
     }
   });
+}
+
+function copyConsole() {
+  const text = $("#consoleBody").innerText;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(
+      () => toast("Console copied to clipboard", "ok"),
+      () => toast("Copy failed", "err")
+    );
+  } else {
+    toast("Clipboard not available", "err");
+  }
+}
+function downloadConsole() {
+  const blob = new Blob([$("#consoleBody").innerText], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "pm3-console.txt";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  toast("Console saved to pm3-console.txt", "ok");
+}
+function filterConsole() {
+  $$("#consoleBody .ln").forEach((ln) =>
+    ln.classList.toggle("filtered", consoleFilterQ && !ln.textContent.toLowerCase().includes(consoleFilterQ))
+  );
+}
+
+/* Inline-edit a slot's name or note (click the label / note line) */
+function editSlotField(el, item, field, saveFn, renderFn) {
+  if (!item) return;
+  const input = document.createElement("input");
+  input.className = "slot-edit";
+  input.value = item[field] || "";
+  input.placeholder = field === "note" ? "note…" : "name…";
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = (save) => {
+    if (done) return;
+    done = true;
+    if (save) {
+      item[field] = input.value.trim();
+      saveFn();
+    }
+    renderFn();
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") finish(true);
+    else if (e.key === "Escape") finish(false);
+  });
+  input.addEventListener("blur", () => finish(true));
 }
 
 function lineLevel(text) {
@@ -424,6 +532,7 @@ function appendConsole(text, stream) {
   if (!level) level = lineLevel(text);
   div.className = "ln" + (level ? " ln-" + level : "");
   div.innerHTML = ansiToHtml(text) || "&nbsp;";
+  if (consoleFilterQ && !text.toLowerCase().includes(consoleFilterQ)) div.classList.add("filtered");
   body.appendChild(div);
 
   // trim very long buffers
@@ -758,6 +867,7 @@ function renderVerify(target, v) {
     `<div class="vr-cmp"><span class="vr-k">read back</span><code>${esc(v.got)}</code></div>` +
     `</div></div>`;
   el.scrollIntoView({ block: "nearest" });
+  toast(m.head + (v.label ? " — " + v.label : ""), v.status === "ok" ? "ok" : v.status === "mismatch" ? "err" : "warn");
 }
 
 /* ------------------------------------------------------------------ *
@@ -860,6 +970,10 @@ function wireCopy() {
       renderFobs();
     } else if (e.target.closest(".fob-write")) {
       writeFob(state.fobs.find((f) => f.slot === slot), card);
+    } else if (e.target.classList.contains("fob-slot")) {
+      editSlotField(e.target, state.fobs.find((f) => f.slot === slot), "name", saveFobs, renderFobs);
+    } else if (e.target.classList.contains("fob-note")) {
+      editSlotField(e.target, state.fobs.find((f) => f.slot === slot), "note", saveFobs, renderFobs);
     }
   });
   // library export / import (buttons appear in both the Copy Fob and HF Copy bars)
@@ -923,9 +1037,10 @@ function renderFobs() {
       const cmd = buildClone(spec, fob.fields, fob.extra);
       return (
         `<div class="fob" data-slot="${fob.slot}">` +
-        `<div class="fob-head"><span class="fob-slot">${esc(fob.label)}</span>` +
+        `<div class="fob-head"><span class="fob-slot" title="click to rename">${esc(fob.name || fob.label)}</span>` +
         `<span class="fob-type">${esc(fob.typeName)}</span>` +
         `<button class="fob-del" title="Forget">&#10005;</button></div>` +
+        `<div class="fob-note${fob.note ? "" : " empty"}" title="click to edit note">${esc(fob.note || "")}</div>` +
         `<div class="fob-fields">${chips}</div>` +
         `<div class="fob-cmd">${esc(cmd)}</div>` +
         `<div class="fob-foot"><button class="btn btn-primary fob-write">&#9998; Write to blank</button>` +
@@ -1007,6 +1122,10 @@ function wireHfCopy() {
       detectMagic(item);
     } else if (e.target.closest(".fob-deepverify")) {
       deepVerify(item, card);
+    } else if (e.target.classList.contains("fob-slot")) {
+      editSlotField(e.target, item, "name", saveHf, renderHf);
+    } else if (e.target.classList.contains("fob-note")) {
+      editSlotField(e.target, item, "note", saveHf, renderHf);
     }
   });
   $("#rescueBtn").addEventListener("click", rescueMagic);
@@ -1107,9 +1226,10 @@ function renderHf() {
           : "";
       return (
         `<div class="fob" data-slot="${c.slot}">` +
-        `<div class="fob-head"><span class="fob-slot">${esc(c.label)}</span>` +
+        `<div class="fob-head"><span class="fob-slot" title="click to rename">${esc(c.name || c.label)}</span>` +
         `<span class="fob-type">${esc(c.typeName)}</span>` +
         `<button class="fob-del" title="Forget">&#10005;</button></div>` +
+        `<div class="fob-note${c.note ? "" : " empty"}" title="click to edit note">${esc(c.note || "")}</div>` +
         `<div class="fob-fields"><div class="chip"><span class="k">${idlbl}</span><span class="v">${esc(c.uid || "?")}</span></div>` +
         `<div class="chip"><span class="k">dump</span><span class="v">${esc(c.dumpbase)}</span></div></div>` +
         `<div class="fob-foot">${magicSel}` +

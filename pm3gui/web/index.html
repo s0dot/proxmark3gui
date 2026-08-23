@@ -21,6 +21,7 @@
         <button id="refreshPorts" class="icon-btn" title="Refresh ports">&#x21bb;</button>
       </div>
       <button id="connectBtn" class="btn btn-primary">Connect</button>
+      <button id="themeBtn" class="icon-btn" title="Toggle light / dark theme">&#9790;</button>
       <button id="settingsBtn" class="icon-btn" title="Client settings">&#9881;</button>
       <div class="status">
         <span id="statusDot" class="dot"></span>
@@ -77,6 +78,12 @@
       </div>
 
       <div id="dashResult" class="result-box hidden"></div>
+
+      <div class="stat-row">
+        <div class="stat"><div class="num" id="statFobs">0</div><div class="lbl">LF fobs saved</div></div>
+        <div class="stat"><div class="num" id="statCards">0</div><div class="lbl">HF cards saved</div></div>
+        <div class="stat"><div class="num" id="statMode">offline</div><div class="lbl">Connection</div></div>
+      </div>
 
       <h2 class="section-title">Hardware</h2>
       <div class="card-grid">
@@ -418,7 +425,10 @@
       <span class="ch-title">&#9632; Console</span>
       <div class="ch-tools">
         <span id="busyDot" class="busy hidden">working&hellip;</span>
+        <input id="consoleFilter" class="console-filter" placeholder="filter&hellip;" spellcheck="false" title="Show only lines containing this text">
         <label class="chk"><input type="checkbox" id="autoscroll" checked> autoscroll</label>
+        <button id="copyConsole" class="mini-btn" title="Copy the log to the clipboard">Copy</button>
+        <button id="downloadConsole" class="mini-btn" title="Save the log as a .txt file">Save</button>
         <button id="clearConsole" class="mini-btn">Clear</button>
       </div>
     </div>
@@ -429,6 +439,8 @@
       <button class="btn" id="runBtn" disabled>Run</button>
     </form>
   </section>
+
+  <div id="toasts" class="toasts"></div>
 
   <script src="cards.js"></script>
   <script src="app.js"></script>
