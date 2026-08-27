@@ -11,7 +11,7 @@ import goldens as G             # noqa: E402
 
 class TestHelpers(unittest.TestCase):
     def test_norm_hex(self):
-        self.assertEqual(P.norm_hex("04 50 e5 fa 84 6b 80"), "0450E5FA846B80")
+        self.assertEqual(P.norm_hex("04 a1 b2 c3 d4 e5 f6"), "04A1B2C3D4E5F6")
         self.assertEqual(P.norm_hex(None), "")
 
     def test_size_flag(self):
@@ -24,7 +24,7 @@ class TestHelpers(unittest.TestCase):
 class TestHfInfo(unittest.TestCase):
     def test_gdm_blank(self):
         i = P.parse_hf_info(G.INFO_GDM_BLANK)
-        self.assertEqual(i["uid"], "04 CD E5 03 F5 EF 45")
+        self.assertEqual(i["uid"], "04 11 22 33 44 55 66")
         self.assertEqual(i["atqa"], "00 44")
         self.assertEqual(i["sak"], "08")
         self.assertTrue(i["is_gdm"])
@@ -34,7 +34,7 @@ class TestHfInfo(unittest.TestCase):
 
     def test_clone_ok(self):
         i = P.parse_hf_info(G.INFO_CLONE_OK)
-        self.assertEqual(P.norm_hex(i["uid"]), "0450E5FA846B80")
+        self.assertEqual(P.norm_hex(i["uid"]), "04A1B2C3D4E5F6")
 
     def test_blank_0000(self):
         i = P.parse_hf_info(G.INFO_BLANK_0000)
@@ -96,7 +96,7 @@ class TestWriteAndLoad(unittest.TestCase):
 
     def test_uscuid_script(self):
         s = P.parse_uscuid_script(G.USCUID_SCRIPT_OK)
-        self.assertEqual(P.norm_hex(s["uid"]), "0450E5FA846B80")  # not the NUID line
+        self.assertEqual(P.norm_hex(s["uid"]), "04A1B2C3D4E5F6")  # not the NUID line
         self.assertTrue(s["ok"])
 
 

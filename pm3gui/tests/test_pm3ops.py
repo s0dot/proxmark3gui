@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))                  
 import pm3ops as OPS            # noqa: E402
 import goldens as G             # noqa: E402
 
-UID = "04 50 E5 FA 84 6B 80"
+UID = "04 A1 B2 C3 D4 E5 F6"
 DATA_WRITE = ("hf mf cload", "script run")
 ANY_WRITE = ("hf mf gdmsetcfg", "hf mf cload", "script run")
 
@@ -61,7 +61,7 @@ class TestHappyPath(unittest.TestCase):
         self.assertFalse(res["aborted"])
         self.assertEqual(res["result"]["cload_flag"], "--1k+")
         import pm3parse as P
-        self.assertEqual(P.norm_hex(res["result"]["verified_uid"]), "0450E5FA846B80")
+        self.assertEqual(P.norm_hex(res["result"]["verified_uid"]), "04A1B2C3D4E5F6")
 
     def test_uid_script_is_the_last_write(self):
         r = FakeRunner(full_table(), info_seq=[G.INFO_GDM_BLANK, G.INFO_CLONE_OK])

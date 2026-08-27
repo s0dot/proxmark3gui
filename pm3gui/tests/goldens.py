@@ -1,11 +1,16 @@
-"""Real Proxmark3 (Iceman) console transcripts captured from actual hardware
-during the USCUID clone work. Used as golden fixtures so parsers/ops are tested
-against genuine output, not hand-waved strings."""
+"""Proxmark3 (Iceman) console transcripts captured from real hardware during the
+USCUID clone work, used as golden fixtures so parsers/ops are tested against
+genuine output rather than hand-waved strings.
+
+UIDs have been replaced with synthetic placeholders (04A1B2C3D4E5F6 /
+04112233445566) -- a card UID is an access credential, so real ones don't
+belong in a public repo. Only the identifiers changed; the output format,
+spacing and wording are exactly as the client printed them."""
 
 # hf mf info on a healthy Gen4 GDM/USCUID blank (factory, 7-byte UID)
 INFO_GDM_BLANK = """\
 [=] --- ISO14443-a Information -----------------------------
-[+]  UID: 04 CD E5 03 F5 EF 45
+[+]  UID: 04 11 22 33 44 55 66
 [+] ATQA: 00 44
 [+]  SAK: 08 [1]
 [=]              TAG IC Signature: 15F4231104658BEFF62A5ED497CDBCCC
@@ -19,7 +24,7 @@ INFO_GDM_BLANK = """\
 # hf mf info after a successful clone (UID now the target fob's)
 INFO_CLONE_OK = """\
 [=] --- ISO14443-a Information -----------------------------
-[+]  UID: 04 50 E5 FA 84 6B 80
+[+]  UID: 04 A1 B2 C3 D4 E5 F6
 [+] ATQA: 00 44
 [+]  SAK: 08 [1]
 """
@@ -95,20 +100,20 @@ GDMSETCFG_OK = """\
 # hf mf cload of an 18-sector (1152-byte) dump
 CLOAD_OK = """\
 [=] Normally only a GDM / UMC card will handle the extra sectors
-[+] Loaded 1152 bytes from binary file `hf-mf-0450E5FA846B80-dump-002`
+[+] Loaded 1152 bytes from binary file `hf-mf-04A1B2C3D4E5F6-dump-002`
 [=] Copying to magic gen1a MIFARE Classic 1K Ev1
 [+] Card loaded 72 blocks from file
 [=] Done!
 """
 
-# script run hf_mf_uscuid_prog -t 4 -u 0450E5FA846B80
+# script run hf_mf_uscuid_prog -t 4 -u 04A1B2C3D4E5F6
 USCUID_SCRIPT_OK = """\
 [+] executing lua hf_mf_uscuid_prog.lua
-[+] args '-t 4 -u 0450E5FA846B80'
+[+] args '-t 4 -u 04A1B2C3D4E5F6'
 [+] 0A
 [+] 0A
 [?] WARNING: nUID should be updated with this value:
-[=] UID  | 04 50 E5 FA 84 6B 80
+[=] UID  | 04 A1 B2 C3 D4 E5 F6
 [=] NUID | AF 21 64 7F
 [-] Updating real block 0
 [+] finished hf_mf_uscuid_prog
