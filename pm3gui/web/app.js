@@ -1097,6 +1097,7 @@ function saveHf() {
 
 function wireHfCopy() {
   loadHf();
+  initWipeOptions();
   renderHf();
   $("#readHfBtn").addEventListener("click", hfReadDump);
   $("#wipeHfBtn").addEventListener("click", wipeHf);
@@ -1198,7 +1199,10 @@ function addHfCard(spec, info) {
     size: info.size,
     csn: !!spec.csn,
     dumpbase: info.dumpbase,
-    magic: "gen1a",
+    // default write mode: magic gen for MFC, else the profile marked def
+    magic: spec.id === "mfc"
+      ? "gen1a"
+      : (((window.WRITE_PROFILES || {})[spec.id] || []).find((p) => p.def) || {}).id || "",
   });
   saveHf();
   renderHf();
@@ -1212,18 +1216,21 @@ function renderHf() {
   list.innerHTML = state.hfCards
     .map((c) => {
       const idlbl = c.csn ? "CSN" : "UID";
-      const magicSel =
-        c.id === "mfc"
-          ? `<select class="magic-sel" title="target magic type">` +
-            ["gen1a:Gen1a (cload)", "gen2:Gen2/CUID (restore)", "gen3:Gen3 (restore+gen3uid)", "gen4:Gen4 GTU (gload)", "gdm:Gen4 GDM / USCUID (guided 7-byte)"]
-              .map((o) => {
-                const i = o.indexOf(":");
-                const v = o.slice(0, i);
-                return `<option value="${v}"${c.magic === v ? " selected" : ""}>${o.slice(i + 1)}</option>`;
-              })
-              .join("") +
-            `</select>`
-          : "";
+      const mfcOpts = ["gen1a:Gen1a (cload)", "gen2:Gen2/CUID (restore)", "gen3:Gen3 (restore+gen3uid)", "gen4:Gen4 GTU (gload)", "gdm:Gen4 GDM / USCUID (guided 7-byte)"];
+      const profOpts = ((window.WRITE_PROFILES || {})[c.id] || []).map((p) => `${p.id}:${p.name}`);
+      const opts = c.id === "mfc" ? mfcOpts : profOpts;
+      const magicSel = opts.length
+        ? `<select class="magic-sel" title="how to write the target card">` +
+          opts
+            .map((o) => {
+              const i = o.indexOf(":");
+              const v = o.slice(0, i);
+              const sel = c.magic === v || (!c.magic && o === opts[0]);
+              return `<option value="${v}"${sel ? " selected" : ""}>${esc(o.slice(i + 1))}</option>`;
+            })
+            .join("") +
+          `</select>`
+        : "";
       return (
         `<div class="fob" data-slot="${c.slot}">` +
         `<div class="fob-head"><span class="fob-slot" title="click to rename">${esc(c.name || c.label)}</span>` +
@@ -1338,7 +1345,10 @@ async function writeHf(c, cardEl) {
       : c.magic === "gen2" ? [restore]
       : [`hf mf cload ${gflag} -f ${c.dumpbase}`]; // gen1a  (gdm handled by uscuidClone above)
   } else {
-    cmds = [spec.write.replace("{dump}", c.dumpbase)];
+    // UL/NTAG + iCLASS: use the selected write profile (magic flags etc.)
+    const profs = (window.WRITE_PROFILES || {})[c.id] || [];
+    const prof = profs.find((p) => p.id === c.magic) || profs.find((p) => p.def);
+    cmds = [(prof ? prof.cmd : spec.write).replace("{dump}", c.dumpbase)];
   }
   if (!confirm(`Write ${c.label} (${c.typeName}) to the MAGIC / writable card on the antenna?\n\n${cmds.join("\n")}\n\nA normal blank won't work — the target must be a magic / writable card.`))
     return;
@@ -1495,12 +1505,48 @@ function wipeT5577() {
   if (!confirm("Wipe the T5577 on the antenna back to a blank default tag?")) return;
   runCmd("lf t55xx wipe");
 }
+const WIPEREG = window.WIPE_REGISTRY || [];
+
+/* Fill the wipe dropdown from the registry (every HF type we can blank) */
+function initWipeOptions() {
+  const sel = $("#wipeGen");
+  if (!sel || !WIPEREG.length) return;
+  sel.innerHTML = WIPEREG.map((w) => `<option value="${w.id}">${esc(w.name)}</option>`).join("");
+  const setTitle = () => {
+    const w = WIPEREG.find((x) => x.id === sel.value);
+    sel.title = w ? w.note : "card type to wipe";
+  };
+  sel.addEventListener("change", setTitle);
+  setTitle();
+}
+
 function wipeHf() {
   if (!state.connected) return appendConsole("[!] Connect first.", "sys");
-  const gen = $("#wipeGen").value;
-  const cmd = gen === "gen2" ? "hf mf wipe --gen2" : "hf mf cwipe";
-  if (!confirm(`Wipe the ${gen === "gen2" ? "Gen2/CUID" : "Gen1a"} magic card on the antenna back to blank?\n\n${cmd}`)) return;
-  runCmd(cmd);
+  const spec = WIPEREG.find((w) => w.id === $("#wipeGen").value);
+  if (!spec) return appendConsole("[!] Pick a card type to wipe.", "sys");
+
+  if (spec.needsBlank) {
+    return appendConsole(
+      `[!] ${spec.name}: ${spec.note} Dump a blank card first, then use Write to magic.`,
+      "sys"
+    );
+  }
+  let cmd = spec.cmd;
+  if (spec.keyOpt) {
+    const k = (prompt(`${spec.name}\n\nAuthentication key (hex) — leave blank if the card is unprotected:`, "") || "").trim();
+    if (/^[0-9A-Fa-f]+$/.test(k)) cmd += ` ${spec.keyOpt} ${k.toUpperCase()}`;
+  }
+  if (!confirm(`WIPE the card on the antenna?\n\n${spec.name}\n${spec.note}\n\n${cmd}\n\nThis erases the card's data — it cannot be undone.`))
+    return;
+  appendConsole(`[=] Wiping — ${spec.name}…`, "sys");
+  runCmd(cmd, {
+    onDone: (lines) => {
+      const t = stripAnsi(lines.join("\n"));
+      const ok = /Done|wipe(d)?\b|success/i.test(t) && !READ_FAIL.test(t);
+      appendConsole(ok ? "[+] Wipe complete." : "[!] Wipe may have failed — check the output above.", "sys");
+      toast(ok ? "Card wiped" : "Wipe may have failed", ok ? "ok" : "err");
+    },
+  });
 }
 
 /* ------------------------------------------------------------------ *

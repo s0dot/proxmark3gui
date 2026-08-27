@@ -159,6 +159,20 @@
       </div>
 
       <div class="step">
+        <div class="step-h"><span class="step-n">5</span> Wipe / re-blank a card</div>
+        <p class="guide-intro">Reusing a magic card? Pick its type in the <b>Wipe</b> dropdown on HF Copy and
+          hit Wipe — the GUI runs the right blanking command for that card:</p>
+        <ul class="guide-list">
+          <li><b>Gen1a</b> &rarr; <code>hf mf cwipe</code> &middot; <b>Gen4 GDM/USCUID</b> &rarr; <code>hf mf cwipe --gdm</code></li>
+          <li><b>Gen2/CUID</b> &rarr; <code>hf mf wipe --gen2</code> &middot; <b>normal MIFARE</b> &rarr; <code>hf mf wipe</code> (needs keys)</li>
+          <li><b>Ultralight / NTAG</b> &rarr; <code>hf mfu wipe</code> (asks for a key if the tag is protected)</li>
+          <li><b>Gen4 GTU</b> has no wipe command — load a blank dump over it instead.</li>
+        </ul>
+        <div class="hint-line">&#9888; Wiping erases the card's data and cannot be undone.</div>
+        <div class="btn-row"><button class="btn" data-goto="hfcopy">Go to HF Copy &rarr;</button></div>
+      </div>
+
+      <div class="step">
         <div class="step-h"><span class="step-n">&#9432;</span> Magic cards — the 30-second version</div>
         <p class="guide-intro">A normal blank's <b>UID is locked</b>, so you can't put a fob's identity on it.
           A <b>magic card</b> lets you rewrite block&nbsp;0 / the UID:</p>
@@ -243,10 +257,8 @@
         <input id="mfKeys" class="cfg-in" style="max-width:240px" spellcheck="false"
                placeholder="extra MIFARE keys / dict (optional)" title="space-separated 12-hex keys, or a dictionary filename — used by autopwn">
         <span style="flex:1"></span>
-        <select id="wipeGen" class="cfg-in" style="max-width:110px" title="magic type to wipe">
-          <option value="gen1a">Gen1a</option><option value="gen2">Gen2</option>
-        </select>
-        <button id="wipeHfBtn" class="btn" title="Wipe the magic card on the antenna">&#9003; Wipe</button>
+        <select id="wipeGen" class="cfg-in" style="max-width:210px" title="card type to wipe"></select>
+        <button id="wipeHfBtn" class="btn" title="Blank the card on the antenna">&#9003; Wipe</button>
         <button id="rescueBtn" class="btn" title="Diagnose a stuck magic card (read-only)">&#9855; Rescue</button>
         <button class="btn export-lib" title="Save all saved fobs + cards to a file">&#8681; Export</button>
         <button class="btn import-lib" title="Load a saved library file (merges in)">&#8679; Import</button>

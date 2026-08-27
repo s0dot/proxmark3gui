@@ -162,3 +162,54 @@ window.HF_REGISTRY = [
     dump: "hf iclass dump --ki 0", write: "hf iclass restore -f {dump} --first 6 --last 18 --ki 0",
     prefix: "hf-iclass-" },
 ];
+
+/* ------------------------------------------------------------------ *
+ *  HF wipe targets — every magic/writable HF card type the Iceman
+ *  client can blank, with the exact command it needs.
+ *  Verified against client/src/cmdhfmf.c + cmdhfmfu.c argtables.
+ * ------------------------------------------------------------------ */
+window.WIPE_REGISTRY = [
+  { id: "gen1a", name: "MIFARE Classic — Gen1a (UID changeable)",
+    cmd: "hf mf cwipe",
+    note: "Restores default UID / sectors / keys via the Gen1a backdoor." },
+
+  { id: "gdm", name: "MIFARE Classic — Gen4 GDM / USCUID",
+    cmd: "hf mf cwipe --gdm",
+    note: "Same wipe, over the GDM 20/23 magic wakeup." },
+
+  { id: "gen2", name: "MIFARE Classic — Gen2 / CUID / FUID",
+    cmd: "hf mf wipe --gen2",
+    note: "Zeros the card and forces a write to sector 0 / block 0." },
+
+  { id: "mfc", name: "MIFARE Classic — normal card (keys required)",
+    cmd: "hf mf wipe",
+    note: "Wipes to zeros + default keys/access bits. Needs the current keys." },
+
+  { id: "mfu", name: "Ultralight / NTAG (incl. magic)",
+    cmd: "hf mfu wipe",
+    note: "Zeros the pages and restores the default key.",
+    keyOpt: "-k" },
+
+  { id: "gen4", name: "MIFARE Classic — Gen4 GTU (password)",
+    cmd: "hf mf gload --1k -f {blank}",
+    note: "Gen4 GTU has no wipe command — load a blank dump instead.",
+    needsBlank: true },
+];
+
+/* ------------------------------------------------------------------ *
+ *  One-click copy profiles — how to write a dumped card onto each
+ *  supported target, including the magic-only flags most people miss
+ *  (mfu -s sets the UID; -e writes NTAG21x version/signature).
+ * ------------------------------------------------------------------ */
+window.WRITE_PROFILES = {
+  mfu: [
+    { id: "plain",   name: "Normal UL/NTAG (data only)",       cmd: "hf mfu restore -f {dump}" },
+    { id: "magic",   name: "Magic UL/NTAG (set UID)",          cmd: "hf mfu restore -f {dump} -s", def: true },
+    { id: "ntag21x", name: "Magic NTAG21x (UID + version/sig)", cmd: "hf mfu restore -f {dump} -ser" },
+  ],
+  iclass: [
+    { id: "std",    name: "Standard key",         cmd: "hf iclass restore -f {dump} --first 6 --last 18 --ki 0", def: true },
+    { id: "elite",  name: "Elite key (custom)",   cmd: "hf iclass restore -f {dump} --first 6 --last 18 --ki 0 --elite" },
+    { id: "credit", name: "Credit key",           cmd: "hf iclass restore -f {dump} --first 6 --last 18 --ki 0 --credit" },
+  ],
+};
